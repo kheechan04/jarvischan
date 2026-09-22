@@ -1691,8 +1691,20 @@
       const said=(e.results[e.results.length-1][0].transcript||"");
       if(WAKE_RE.test(said)){
         log('wake-word <span class="ok">✓ "'+said.trim()+'" → listening</span>');
-        stopWakeWordRec();          // stop first so it can't hear its own reply
-        toggleListen();
+        // Hand the mic off to Whisper only once this recognizer has actually
+        // released it (its onend fires) — starting getUserMedia while Chrome
+        // is still tearing down the SpeechRecognition session can hand back
+        // a MediaRecorder that looks like it's "recording" but never emits
+        // audio or a stop event, so silence never ends the exchange. A short
+        // timeout is a fallback in case onend never fires.
+        const r=wwRec;
+        wwRec=null; wwActive=false;
+        r.onresult=null; r.onerror=null;
+        let handedOff=false;
+        const proceed=()=>{ if(handedOff) return; handedOff=true; r.onend=null; toggleListen(); };
+        r.onend=proceed;
+        try{ r.stop(); }catch(e){ proceed(); }
+        setTimeout(proceed,400);
       }
     };
     wwRec.onerror=err=>{

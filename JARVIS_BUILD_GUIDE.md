@@ -442,7 +442,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 85,112 bytes | `b6090203b2b17420…` |
+| `index.html` | 85,789 bytes | `9262573079784526…` |
 | `api/chat.js` | 25,304 bytes | `38f0232035235c3d…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
@@ -451,7 +451,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=b6090203b2b174200482cb8999c38a02c42d26270ed6d0dfaa3789c86aeebd45 -->
+<!-- FILE: index.html sha256=9262573079784526d51ee9efd91cbbe079736cb11910487d63b5014e60b3c41c -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -2146,8 +2146,20 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       const said=(e.results[e.results.length-1][0].transcript||"");
       if(WAKE_RE.test(said)){
         log('wake-word <span class="ok">✓ "'+said.trim()+'" → listening</span>');
-        stopWakeWordRec();          // stop first so it can't hear its own reply
-        toggleListen();
+        // Hand the mic off to Whisper only once this recognizer has actually
+        // released it (its onend fires) — starting getUserMedia while Chrome
+        // is still tearing down the SpeechRecognition session can hand back
+        // a MediaRecorder that looks like it's "recording" but never emits
+        // audio or a stop event, so silence never ends the exchange. A short
+        // timeout is a fallback in case onend never fires.
+        const r=wwRec;
+        wwRec=null; wwActive=false;
+        r.onresult=null; r.onerror=null;
+        let handedOff=false;
+        const proceed=()=>{ if(handedOff) return; handedOff=true; r.onend=null; toggleListen(); };
+        r.onend=proceed;
+        try{ r.stop(); }catch(e){ proceed(); }
+        setTimeout(proceed,400);
       }
     };
     wwRec.onerror=err=>{
