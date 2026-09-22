@@ -403,6 +403,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 한국어 대답이 어색한 목소리로 읽힘 | 컴퓨터에 좋은 한국어 음성이 없음 | Chrome의 "Google 한국의" 목소리 권장 |
 | 짧은 한국어를 영어로 잘못 알아들음 | 짧은 말은 언어 감지가 헷갈릴 수 있음 | Lang 메뉴를 한국어로 고정 |
 | 박수 두 번 웨이크가 잘 안 잡힘 | 공유 analyser의 `fftSize=128`(≈2.7ms 창)을 26ms마다 폴링해 대부분의 오디오를 놓침. 게다가 `getUserMedia({audio:true})`가 기본으로 켜는 자동게인·노이즈억제가 박수 같은 임펄스 소리를 눌러버림 | 박수 감지 전용 스트림을 `autoGainControl:false, noiseSuppression:false, echoCancellation:false`로 따로 열고, 그 analyser의 `fftSize`를 2048(≈43ms)로 키워 폴링 공백을 없앰. Whisper 녹음용 스트림은 그대로 둬서 받아쓰기 품질엔 영향 없음 |
+| 웨이크워드로 시작한 대화가 조용해져도 안 끝남 | "Jarvis" 인식 직후 그 음성인식 세션이 마이크를 완전히 놓기도 전에 Whisper용 마이크를 새로 잡으려다, 녹음이 "녹음 중"으로는 뜨지만 실제로는 오디오도 못 받고 종료 이벤트도 안 나는 상태로 멈춤 | 웨이크워드 인식기가 진짜로 끝났다는 신호(`onend`, 400ms 타임아웃 보조)를 받은 뒤에 Whisper 녹음을 시작하도록 순서 변경 |
+| 조용한 방이 아니면 대화가 안 끝남(생활 소음이 계속 "말하는 중"으로 잡힘) | 무음 판정 기준(floor)을 녹음 시작 300ms에 딱 한 번만 재고 끝까지 고정해서 씀. 그 이후 주변 소음이 그보다 커지면 영원히 "말하는 중"으로 오분류됨 | 3초마다 그 구간의 최저값으로 floor를 다시 앵커링. 실제 목소리는 단어·숨 사이 틈이 있어 안 걸리고, 꾸준한 생활 소음만 흡수됨 |
+| 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 문장 단위(최대 180자)로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경 — 각 조각이 한계 아래 유지됨 |
 
 ---
 
@@ -442,7 +445,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 86,638 bytes | `3a7d0f1b60380011…` |
+| `index.html` | 87,342 bytes | `15023a3fcdbb1e9d…` |
 | `api/chat.js` | 25,304 bytes | `72ed2f6a6fc7ed46…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
@@ -451,7 +454,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=3a7d0f1b60380011260e1fb93993da9b5376494252a76cb2b6359888bd8c6b3f -->
+<!-- FILE: index.html sha256=15023a3fcdbb1e9d4ff66d3bf9c75842ed433b163464f421d82e0bfaaef48783 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1565,18 +1568,34 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     const v=liveVoice(ko?"ko":"en");
     if(!loggedSpoke || (ko && loggedSpoke!=="ko")){ loggedSpoke=ko?"ko":true;
       log('tts → <span class="'+(v?"ok":"rt")+'">'+(v?v.name.replace(/\(.*?\)/g,"").trim()+" ("+v.lang+")":"system default")+"</span>"); }
-    const u=new SpeechSynthesisUtterance(text);
-    if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=ko?"ko-KR":"en-US"; }
-    u.rate=1.02; u.pitch=1.02;
-    u.onstart=()=>{ setMode("speaking");
-      clearInterval(speakTimer);
-      speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
+    // Chrome silently cuts off long utterances partway through (a long-standing
+    // bug: speech just stops with neither onend nor onerror ever firing).
+    // Speaking the reply as a queue of sentence-sized chunks keeps each one
+    // comfortably under that limit so long answers don't go silent mid-sentence.
+    const chunks=(text.match(/[^.!?。！？\n]+[.!?。！？]*\s*/g)||[text]).reduce((out,s)=>{
+      s=s.trim(); if(!s) return out;
+      const last=out[out.length-1];
+      if(last && (last+" "+s).length<=180) out[out.length-1]=last+" "+s; else out.push(s);
+      return out;
+    },[]);
+    let i=0;
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
+    const speakNext=()=>{
+      if(i>=chunks.length){ done(); return; }
+      const u=new SpeechSynthesisUtterance(chunks[i++]);
+      if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=ko?"ko-KR":"en-US"; }
+      u.rate=1.02; u.pitch=1.02;
+      u.onstart=()=>{ setMode("speaking");
+        clearInterval(speakTimer);
+        speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
+      };
+      u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
+      u.onend=speakNext;
+      u.onerror=done;
+      try{ speechSynthesis.speak(u); }catch(e){ done(); }
     };
-    u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
-    u.onend=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
-    u.onerror=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
     // small delay dodges the Chrome cancel()->speak() race that drops voice
-    setTimeout(()=>{ try{ speechSynthesis.speak(u); }catch(e){} }, 60);
+    setTimeout(speakNext, 60);
   }
 
   /* ==========================================================

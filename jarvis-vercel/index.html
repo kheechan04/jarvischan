@@ -1110,18 +1110,34 @@
     const v=liveVoice(ko?"ko":"en");
     if(!loggedSpoke || (ko && loggedSpoke!=="ko")){ loggedSpoke=ko?"ko":true;
       log('tts → <span class="'+(v?"ok":"rt")+'">'+(v?v.name.replace(/\(.*?\)/g,"").trim()+" ("+v.lang+")":"system default")+"</span>"); }
-    const u=new SpeechSynthesisUtterance(text);
-    if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=ko?"ko-KR":"en-US"; }
-    u.rate=1.02; u.pitch=1.02;
-    u.onstart=()=>{ setMode("speaking");
-      clearInterval(speakTimer);
-      speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
+    // Chrome silently cuts off long utterances partway through (a long-standing
+    // bug: speech just stops with neither onend nor onerror ever firing).
+    // Speaking the reply as a queue of sentence-sized chunks keeps each one
+    // comfortably under that limit so long answers don't go silent mid-sentence.
+    const chunks=(text.match(/[^.!?。！？\n]+[.!?。！？]*\s*/g)||[text]).reduce((out,s)=>{
+      s=s.trim(); if(!s) return out;
+      const last=out[out.length-1];
+      if(last && (last+" "+s).length<=180) out[out.length-1]=last+" "+s; else out.push(s);
+      return out;
+    },[]);
+    let i=0;
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
+    const speakNext=()=>{
+      if(i>=chunks.length){ done(); return; }
+      const u=new SpeechSynthesisUtterance(chunks[i++]);
+      if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=ko?"ko-KR":"en-US"; }
+      u.rate=1.02; u.pitch=1.02;
+      u.onstart=()=>{ setMode("speaking");
+        clearInterval(speakTimer);
+        speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
+      };
+      u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
+      u.onend=speakNext;
+      u.onerror=done;
+      try{ speechSynthesis.speak(u); }catch(e){ done(); }
     };
-    u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
-    u.onend=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
-    u.onerror=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
     // small delay dodges the Chrome cancel()->speak() race that drops voice
-    setTimeout(()=>{ try{ speechSynthesis.speak(u); }catch(e){} }, 60);
+    setTimeout(speakNext, 60);
   }
 
   /* ==========================================================
