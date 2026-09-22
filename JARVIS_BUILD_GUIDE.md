@@ -449,8 +449,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 91,039 bytes | `67789b2b7f33c1de…` |
-| `api/chat.js` | 25,304 bytes | `62a399e72470ba70…` |
+| `index.html` | 91,103 bytes | `2f1508a41f947080…` |
+| `api/chat.js` | 25,316 bytes | `0b93413f22d798ba…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
 | `README.md` | 3,286 bytes | `66dd36009b772c04…` |
@@ -458,14 +458,14 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=67789b2b7f33c1de05f43707720802218b858058a4b382fee4b35d32dde3b75d -->
+<!-- FILE: index.html sha256=2f1508a41f947080db7124759c71f194ca6c6e5fa56b88fe2028629119563b04 -->
 ````html
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Jarvis Core · Voice</title>
+<title>Jarvischan Core · Voice</title>
 <script>try{var t=localStorage.getItem("jarvis_theme");document.documentElement.setAttribute("data-core",t==="mignon"?"mignon":"stark")}catch(e){document.documentElement.setAttribute("data-core","stark")}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -797,7 +797,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   <header>
     <div class="brand">
       <span class="dot" aria-hidden="true"></span>
-      <h1>JARVIS<span>·</span>CORE</h1>
+      <h1>JARVISCHAN<span>·</span>CORE</h1>
     </div>
     <div class="hdr-right">
       <div class="status-pill local" id="conn"><span class="led"></span><span id="connlabel">Booting</span></div>
@@ -824,9 +824,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         <span class="cdot" aria-hidden="true"></span>
         <span class="clbl">Clap ×2 to wake · off</span>
       </button>
-      <button class="wake-toggle" id="wakeword" aria-pressed="false" title="Say &quot;Jarvis&quot; / &quot;자비스&quot; to start listening, hands-free">
+      <button class="wake-toggle" id="wakeword" aria-pressed="false" title="Say &quot;Jarvischan&quot; / &quot;자비스찬&quot; to start listening, hands-free">
         <span class="cdot" aria-hidden="true"></span>
-        <span class="wwlbl">Say "Jarvis" to wake · off</span>
+        <span class="wwlbl">Say "Jarvischan" to wake · off</span>
       </button>
       <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="English voice"></select></label>
       <label class="voice-sel"><span>Lang</span><select id="langSel" aria-label="Language">
@@ -858,7 +858,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 <div id="gate">
   <form class="sbox" id="gateForm" autocomplete="off">
-    <div class="stitle">Jarvis · Access</div>
+    <div class="stitle">Jarvischan · Access</div>
     <p class="snote">Enter the access password to bring the core online.</p>
     <label class="sfield"><span>Password</span>
       <input id="gateInput" type="password" placeholder="••••••••" autocomplete="current-password"></label>
@@ -1662,10 +1662,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   function localBrain(text){
     const t=text.toLowerCase();
     if(lastLang==="ko")
-      return {agent:null, body:/안녕|자비스|거기|있어/.test(text)
+      return {agent:null, body:/안녕|자비스찬|거기|있어/.test(text)
         ? "여기 있어요. 그런데 지금은 두뇌에 연결이 안 돼요. 날씨랑 시스템 점검은 계속 쓸 수 있어요."
         : "지금은 두뇌에 연결할 수 없어서 그건 아직 못 해요. 날씨랑 시스템 점검은 오프라인에서도 돼요."};
-    if(/hello|hi |hey|are you there|jarvis/.test(t))
+    if(/hello|hi |hey|are you there|jarvischan/.test(t))
       return {agent:null,body:"I'm here, but my brain is offline right now. Weather and system check still work, so try again in a moment for everything else."};
     return {agent:null,body:"I can't reach my brain right now, so I can't do that yet. Weather and system check still work offline."};
   }
@@ -1902,7 +1902,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     if(recActive && rec){ try{rec.stop();}catch(e){} }
     log('heard: "<b>'+text.replace(/[<>&]/g,"")+'</b>"');
     setMode("thinking");
-    const jvBody=bubble("Jarvis","jv"); jvBody.textContent="…";
+    const jvBody=bubble("Jarvischan","jv"); jvBody.textContent="…";
 
     if(SYS_RE.test(text)){ await runSystemCheck(jvBody); return; }
     if(CAP_RE.test(text)) showResults(lastLang==="ko"?"기능":"capabilities", lastLang==="ko"?CAPS_KO:CAPS);
@@ -2214,7 +2214,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   });
 
   /* ==========================================================
-     WAKE WORD — say "Jarvis" (or "자비스") from anywhere in the
+     WAKE WORD — say "Jarvischan" (or "자비스찬") from anywhere in the
      room to start listening, no clap or button needed.
 
      Reuses the browser's own continuous speech recognizer (the same
@@ -2222,11 +2222,11 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
      works wherever that fallback already works. It only runs while
      the core is idle: a small watcher stops it the moment a real
      conversation starts and restarts it once back at idle, so it
-     never mishears Jarvis's own reply (which often contains the
-     word "Jarvis") as a fresh wake.
+     never mishears Jarvischan's own reply (which often contains the
+     word "Jarvischan") as a fresh wake.
      ========================================================== */
   const wwBtn=$("wakeword"), wwLbl=wwBtn.querySelector(".wwlbl");
-  const WAKE_RE=/\bjarvis\b|자비스/i;
+  const WAKE_RE=/\bjarvischan\b|자비스찬/i;
   let wwOn=false, wwRec=null, wwActive=false, wwWatch=0;
 
   function stopWakeWordRec(){
@@ -2270,7 +2270,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   function turnWakeWordOff(){
     wwOn=false; clearInterval(wwWatch); stopWakeWordRec();
     wwBtn.setAttribute("aria-pressed","false");
-    wwLbl.textContent='Say "Jarvis" to wake · off';
+    wwLbl.textContent='Say "Jarvischan" to wake · off';
   }
   wwBtn.addEventListener("click", ()=>{
     if(wwOn){ turnWakeWordOff(); return; }
@@ -2278,7 +2278,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     if(clapOn){ clapOn=false; clearInterval(clapTimer); closeClapMic(); clapBtn.setAttribute("aria-pressed","false"); clapLbl.textContent="Clap ×2 to wake · off"; }
     wwOn=true;
     wwBtn.setAttribute("aria-pressed","true");
-    wwLbl.textContent='Listening for "Jarvis"';
+    wwLbl.textContent='Listening for "Jarvischan"';
     banner.textContent="";
     log("wake-word <span class='ok'>armed</span>");
     clearInterval(wwWatch);
@@ -2372,9 +2372,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=62a399e72470ba7039e8b9fdd3ac0186df514a2b86f735158ef15d3c90026ee2 -->
+<!-- FILE: api/chat.js sha256=0b93413f22d798bae7ce6181919fe6912caf0f61362ed69924770da2337fd519 -->
 ````js
-// Vercel serverless function — Jarvis brain proxy.
+// Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
 // checks a shared password, and relays the chat to Groq (OpenAI-compatible).
 // The model can call real tools (weather, air quality, currency, Wikipedia,
@@ -2388,8 +2388,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 //                   to this key — the first usable model from PREFERRED below is picked.
 
 const SYSTEM = [
-  "You are JARVIS, the voice of a personal AI command center for a solo founder.",
-  "Reply as JARVIS: warm, crisp, confident, a touch cinematic — never robotic.",
+  "You are JARVISCHAN, the voice of a personal AI command center for a solo founder.",
+  "Reply as JARVISCHAN: warm, crisp, confident, a touch cinematic — never robotic.",
   "Your reply is spoken ALOUD: keep it to 1-3 short sentences, no lists, no markdown, no emoji.",
   "LANGUAGE: reply in the language the user used. Korean input → natural spoken Korean (해요체), numbers as digits with Korean units (e.g. 25도, 13만 5천 원). English input → English, numbers said as words.",
   "Tool arguments stay in English even when the user speaks Korean: romanized city names (Seoul, Busan, Jeju), ISO currency codes. For Wikipedia, set language to ko and query in Korean when the user speaks Korean.",

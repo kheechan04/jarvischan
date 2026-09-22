@@ -1,4 +1,4 @@
-// Vercel serverless function — Jarvis brain proxy.
+// Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
 // checks a shared password, and relays the chat to Groq (OpenAI-compatible).
 // The model can call real tools (weather, air quality, currency, Wikipedia,
@@ -12,8 +12,8 @@
 //                   to this key — the first usable model from PREFERRED below is picked.
 
 const SYSTEM = [
-  "You are JARVIS, the voice of a personal AI command center for a solo founder.",
-  "Reply as JARVIS: warm, crisp, confident, a touch cinematic — never robotic.",
+  "You are JARVISCHAN, the voice of a personal AI command center for a solo founder.",
+  "Reply as JARVISCHAN: warm, crisp, confident, a touch cinematic — never robotic.",
   "Your reply is spoken ALOUD: keep it to 1-3 short sentences, no lists, no markdown, no emoji.",
   "LANGUAGE: reply in the language the user used. Korean input → natural spoken Korean (해요체), numbers as digits with Korean units (e.g. 25도, 13만 5천 원). English input → English, numbers said as words.",
   "Tool arguments stay in English even when the user speaks Korean: romanized city names (Seoul, Busan, Jeju), ISO currency codes. For Wikipedia, set language to ko and query in Korean when the user speaks Korean.",
