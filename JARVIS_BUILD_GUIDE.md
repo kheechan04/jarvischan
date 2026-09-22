@@ -442,7 +442,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 81,635 bytes | `8de51838cfcee1ff…` |
+| `index.html` | 85,112 bytes | `b6090203b2b17420…` |
 | `api/chat.js` | 25,304 bytes | `38f0232035235c3d…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
@@ -451,7 +451,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=8de51838cfcee1ff34349430f0d00c5238efdbbc64d0d81e1b7e874503d046bb -->
+<!-- FILE: index.html sha256=b6090203b2b174200482cb8999c38a02c42d26270ed6d0dfaa3789c86aeebd45 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -816,6 +816,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       <button class="wake-toggle" id="clap" aria-pressed="false" title="Clap twice to start listening">
         <span class="cdot" aria-hidden="true"></span>
         <span class="clbl">Clap ×2 to wake · off</span>
+      </button>
+      <button class="wake-toggle" id="wakeword" aria-pressed="false" title="Say &quot;Jarvis&quot; / &quot;자비스&quot; to start listening, hands-free">
+        <span class="cdot" aria-hidden="true"></span>
+        <span class="wwlbl">Say "Jarvis" to wake · off</span>
       </button>
       <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="English voice"></select></label>
       <label class="voice-sel"><span>Lang</span><select id="langSel" aria-label="Language">
@@ -2044,6 +2048,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     try{ micBtn.classList.add("blocked"); micBtn.setAttribute("aria-label","Voice input blocked — type below"); micBtn.title="Voice input blocked here — type instead"; }catch(e){}
     try{ if(clapBtn){ clapBtn.setAttribute("aria-disabled","true");
       if(clapOn){ clapOn=false; clearInterval(clapTimer); closeClapMic(); clapBtn.setAttribute("aria-pressed","false"); clapLbl.textContent="Clap ×2 to wake · off"; } } }catch(e){}
+    try{ if(wwBtn){ wwBtn.setAttribute("aria-disabled","true"); if(wwOn) turnWakeWordOff(); } }catch(e){}
     try{ txt.focus(); }catch(e){}
   }
 
@@ -2103,6 +2108,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     clapLbl.textContent="Starting…";
     const ok=await startClapWake();
     if(ok){
+      if(wwOn) turnWakeWordOff();   // mutually exclusive — only one ambient listener at a time
       clapOn=true; clapBtn.setAttribute("aria-pressed","true");
       clapLbl.textContent="Listening for claps";
       banner.textContent="";
@@ -2110,6 +2116,72 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     }else{
       clapLbl.textContent="Clap ×2 to wake · off";
     }
+  });
+
+  /* ==========================================================
+     WAKE WORD — say "Jarvis" (or "자비스") from anywhere in the
+     room to start listening, no clap or button needed.
+
+     Reuses the browser's own continuous speech recognizer (the same
+     SR used as the Whisper fallback), so it costs nothing extra and
+     works wherever that fallback already works. It only runs while
+     the core is idle: a small watcher stops it the moment a real
+     conversation starts and restarts it once back at idle, so it
+     never mishears Jarvis's own reply (which often contains the
+     word "Jarvis") as a fresh wake.
+     ========================================================== */
+  const wwBtn=$("wakeword"), wwLbl=wwBtn.querySelector(".wwlbl");
+  const WAKE_RE=/\bjarvis\b|자비스/i;
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0;
+
+  function stopWakeWordRec(){
+    if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
+    wwRec=null; wwActive=false;
+  }
+  function startWakeWordRec(){
+    if(wwActive || !SR) return;
+    wwRec=new SR();
+    wwRec.continuous=true; wwRec.interimResults=true; wwRec.lang=srLang();
+    wwRec.onresult=e=>{
+      const said=(e.results[e.results.length-1][0].transcript||"");
+      if(WAKE_RE.test(said)){
+        log('wake-word <span class="ok">✓ "'+said.trim()+'" → listening</span>');
+        stopWakeWordRec();          // stop first so it can't hear its own reply
+        toggleListen();
+      }
+    };
+    wwRec.onerror=err=>{
+      if(err.error==="not-allowed" || err.error==="service-not-allowed"){
+        log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
+        turnWakeWordOff();
+      }
+      // no-speech / network / aborted: the watcher below restarts it
+    };
+    wwRec.onend=()=>{ wwActive=false; };
+    try{ wwRec.start(); wwActive=true; }catch(e){ wwActive=false; }
+  }
+  function turnWakeWordOff(){
+    wwOn=false; clearInterval(wwWatch); stopWakeWordRec();
+    wwBtn.setAttribute("aria-pressed","false");
+    wwLbl.textContent='Say "Jarvis" to wake · off';
+  }
+  wwBtn.addEventListener("click", ()=>{
+    if(wwOn){ turnWakeWordOff(); return; }
+    if(!SR){ banner.textContent='This browser can\'t listen continuously for a wake word — try Chrome, or use Clap ×2.'; return; }
+    if(clapOn){ clapOn=false; clearInterval(clapTimer); closeClapMic(); clapBtn.setAttribute("aria-pressed","false"); clapLbl.textContent="Clap ×2 to wake · off"; }
+    wwOn=true;
+    wwBtn.setAttribute("aria-pressed","true");
+    wwLbl.textContent='Listening for "Jarvis"';
+    banner.textContent="";
+    log("wake-word <span class='ok'>armed</span>");
+    clearInterval(wwWatch);
+    wwWatch=setInterval(()=>{
+      if(!wwOn) return;
+      const shouldListen = S.mode==="idle" && !recActive;
+      if(shouldListen && !wwActive) startWakeWordRec();
+      if(!shouldListen && wwActive) stopWakeWordRec();
+    },400);
+    startWakeWordRec();
   });
 
   /* ==========================================================
