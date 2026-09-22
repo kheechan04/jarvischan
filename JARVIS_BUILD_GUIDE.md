@@ -442,7 +442,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 85,789 bytes | `9262573079784526…` |
+| `index.html` | 86,532 bytes | `06ab3c198f145b1f…` |
 | `api/chat.js` | 25,304 bytes | `38f0232035235c3d…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
@@ -451,7 +451,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=9262573079784526d51ee9efd91cbbe079736cb11910487d63b5014e60b3c41c -->
+<!-- FILE: index.html sha256=06ab3c198f145b1f32eaf4adf81a70db15855209686f8ef5de78cdc9598281ac -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1922,17 +1922,29 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     const mime=(recorder.mimeType||want||"audio/webm").split(";")[0];
     const t0=Date.now();
     let heard=false, loud=0, quietSince=0, floorSum=0, floorN=0, floor=0.04;
+    let floorReady=false, winMin=1, winStart=0;
     recChunks=[];
     recorder.ondataavailable=e=>{ if(e.data && e.data.size) recChunks.push(e.data); };
     recorder.onstop=()=>{ clearInterval(vadIv); finishWhisper(mime, t0); };
     recorder.start(250);
     setMode("listening","Speak now — tap again to stop");
     log("mic <b>open</b> · whisper");
-    // voice-activity detection on the analyser level, relative to the room's noise floor
+    // voice-activity detection on the analyser level, relative to the room's noise floor.
+    // The floor isn't just a one-time snapshot: every ~3s it's re-anchored to the
+    // quietest reading seen in that window. Real speech still has brief gaps (between
+    // words, breaths) that read near-true-ambient, so this doesn't get fooled by
+    // someone talking continuously — but steady background noise (traffic, AC hum),
+    // which stays at roughly the same level the whole window, gets folded into the
+    // floor so it stops being mistaken for "still talking" once the person goes quiet.
     vadIv=setInterval(()=>{
       const lv=S.micLevel, t=Date.now()-t0;
       if(t<300){ floorSum+=lv; floorN++; return; }
-      if(floorN){ floor=Math.min(0.1, floorSum/floorN); floorN=0; }
+      if(!floorReady){ floor=Math.min(0.1, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
+      if(lv<winMin) winMin=lv;
+      if(t-winStart>3000){
+        floor=Math.min(0.1, floor*0.5+winMin*0.5);
+        winMin=1; winStart=t;
+      }
       if(lv>floor+0.08){ if(++loud>=3) heard=true; quietSince=0; }
       else{
         loud=0;

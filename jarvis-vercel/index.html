@@ -1467,17 +1467,29 @@
     const mime=(recorder.mimeType||want||"audio/webm").split(";")[0];
     const t0=Date.now();
     let heard=false, loud=0, quietSince=0, floorSum=0, floorN=0, floor=0.04;
+    let floorReady=false, winMin=1, winStart=0;
     recChunks=[];
     recorder.ondataavailable=e=>{ if(e.data && e.data.size) recChunks.push(e.data); };
     recorder.onstop=()=>{ clearInterval(vadIv); finishWhisper(mime, t0); };
     recorder.start(250);
     setMode("listening","Speak now — tap again to stop");
     log("mic <b>open</b> · whisper");
-    // voice-activity detection on the analyser level, relative to the room's noise floor
+    // voice-activity detection on the analyser level, relative to the room's noise floor.
+    // The floor isn't just a one-time snapshot: every ~3s it's re-anchored to the
+    // quietest reading seen in that window. Real speech still has brief gaps (between
+    // words, breaths) that read near-true-ambient, so this doesn't get fooled by
+    // someone talking continuously — but steady background noise (traffic, AC hum),
+    // which stays at roughly the same level the whole window, gets folded into the
+    // floor so it stops being mistaken for "still talking" once the person goes quiet.
     vadIv=setInterval(()=>{
       const lv=S.micLevel, t=Date.now()-t0;
       if(t<300){ floorSum+=lv; floorN++; return; }
-      if(floorN){ floor=Math.min(0.1, floorSum/floorN); floorN=0; }
+      if(!floorReady){ floor=Math.min(0.1, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
+      if(lv<winMin) winMin=lv;
+      if(t-winStart>3000){
+        floor=Math.min(0.1, floor*0.5+winMin*0.5);
+        winMin=1; winStart=t;
+      }
       if(lv>floor+0.08){ if(++loud>=3) heard=true; quietSince=0; }
       else{
         loud=0;
