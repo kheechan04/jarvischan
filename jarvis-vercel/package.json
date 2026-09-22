@@ -1,0 +1,6 @@
+{
+  "name": "jarvis-voice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jarvis voice command center — static page + Groq brain proxy (Vercel)"
+}
