@@ -406,6 +406,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 웨이크워드로 시작한 대화가 조용해져도 안 끝남 | "Jarvis" 인식 직후 그 음성인식 세션이 마이크를 완전히 놓기도 전에 Whisper용 마이크를 새로 잡으려다, 녹음이 "녹음 중"으로는 뜨지만 실제로는 오디오도 못 받고 종료 이벤트도 안 나는 상태로 멈춤 | 웨이크워드 인식기가 진짜로 끝났다는 신호(`onend`, 400ms 타임아웃 보조)를 받은 뒤에 Whisper 녹음을 시작하도록 순서 변경 |
 | 조용한 방이 아니면 대화가 안 끝남(생활 소음이 계속 "말하는 중"으로 잡힘) | 무음 판정 기준(floor)을 녹음 시작 300ms에 딱 한 번만 재고 끝까지 고정해서 씀. 그 이후 주변 소음이 그보다 커지면 영원히 "말하는 중"으로 오분류됨 | 3초마다 그 구간의 최저값으로 floor를 다시 앵커링. 실제 목소리는 단어·숨 사이 틈이 있어 안 걸리고, 꾸준한 생활 소음만 흡수됨 |
 | 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 문장 단위(최대 180자)로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경 — 각 조각이 한계 아래 유지됨 |
+| 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 문장 큐 방식으로 바꾼 뒤에도, 마지막 조각의 `onend`가 간헐적으로 아예 안 뜨는 경우가 있음(Chrome 음성 이벤트 신뢰성 문제) | 조각마다 글자 수 기반 예상 재생 시간의 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 강제로 다음 단계로 넘어가게 함 |
 
 ---
 
@@ -445,7 +446,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 87,342 bytes | `15023a3fcdbb1e9d…` |
+| `index.html` | 88,011 bytes | `4617a7dbda48c7bf…` |
 | `api/chat.js` | 25,304 bytes | `72ed2f6a6fc7ed46…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
@@ -454,7 +455,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=15023a3fcdbb1e9d4ff66d3bf9c75842ed433b163464f421d82e0bfaaef48783 -->
+<!-- FILE: index.html sha256=4617a7dbda48c7bfb5b4fd7ab71676a933005c1f7a9630faed763294a36840a7 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1582,17 +1583,24 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
-      const u=new SpeechSynthesisUtterance(chunks[i++]);
+      const chunk=chunks[i++];
+      const u=new SpeechSynthesisUtterance(chunk);
       if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=ko?"ko-KR":"en-US"; }
       u.rate=1.02; u.pitch=1.02;
+      let advanced=false;
+      // Chrome's speech events aren't fully reliable — onend occasionally never
+      // fires (seen most on the last chunk), which would otherwise leave the UI
+      // stuck on "responding" forever. This fallback moves on regardless, sized
+      // generously so it never cuts off genuine speech first.
+      const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
       u.onstart=()=>{ setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
       u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
-      u.onend=speakNext;
-      u.onerror=done;
-      try{ speechSynthesis.speak(u); }catch(e){ done(); }
+      u.onend=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); speakNext(); } };
+      u.onerror=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } };
+      try{ speechSynthesis.speak(u); }catch(e){ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } }
     };
     // small delay dodges the Chrome cancel()->speak() race that drops voice
     setTimeout(speakNext, 60);

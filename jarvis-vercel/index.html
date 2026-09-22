@@ -1124,17 +1124,24 @@
     const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
-      const u=new SpeechSynthesisUtterance(chunks[i++]);
+      const chunk=chunks[i++];
+      const u=new SpeechSynthesisUtterance(chunk);
       if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=ko?"ko-KR":"en-US"; }
       u.rate=1.02; u.pitch=1.02;
+      let advanced=false;
+      // Chrome's speech events aren't fully reliable — onend occasionally never
+      // fires (seen most on the last chunk), which would otherwise leave the UI
+      // stuck on "responding" forever. This fallback moves on regardless, sized
+      // generously so it never cuts off genuine speech first.
+      const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
       u.onstart=()=>{ setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
       u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
-      u.onend=speakNext;
-      u.onerror=done;
-      try{ speechSynthesis.speak(u); }catch(e){ done(); }
+      u.onend=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); speakNext(); } };
+      u.onerror=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } };
+      try{ speechSynthesis.speak(u); }catch(e){ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } }
     };
     // small delay dodges the Chrome cancel()->speak() race that drops voice
     setTimeout(speakNext, 60);
