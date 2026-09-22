@@ -317,7 +317,7 @@ function cleanHistory(raw) {
   // only plain user/assistant turns from the browser — never system/tool roles
   return (Array.isArray(raw) ? raw : [])
     .filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-    .slice(-12)
+    .slice(-40)
     .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
 }
 

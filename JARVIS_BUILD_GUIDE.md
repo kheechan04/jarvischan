@@ -85,7 +85,7 @@ jarvis-vercel/
 ```
 
 - `ping: true`만 보내면 비밀번호만 확인하고 `{ok:true}`를 돌려줘요. 비밀번호 화면에서 써요.
-- `messages`는 `user`와 `assistant` 역할만 받아요(최근 12개, 각 2,000자까지). `system`이나 `tool` 역할은 서버가 버려요.
+- `messages`는 `user`와 `assistant` 역할만 받아요(최근 40개 = 약 20턴, 각 2,000자까지 — 탭이 열려 있는 동안 세션 전체를 기억하되 폭주는 막는 상한선). `system`이나 `tool` 역할은 서버가 버려요.
 - `tz`는 현재 시각을 알려주는 데 써요. 기본값은 `Asia/Seoul`이에요.
 - `lang`(auto·ko·en): ko나 en이면 그 언어로만 대답하고, auto면 사용자가 쓴 언어로 대답해요.
 
@@ -442,8 +442,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 86,532 bytes | `06ab3c198f145b1f…` |
-| `api/chat.js` | 25,304 bytes | `38f0232035235c3d…` |
+| `index.html` | 86,638 bytes | `3a7d0f1b60380011…` |
+| `api/chat.js` | 25,304 bytes | `72ed2f6a6fc7ed46…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
 | `README.md` | 3,286 bytes | `66dd36009b772c04…` |
@@ -451,7 +451,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=06ab3c198f145b1f32eaf4adf81a70db15855209686f8ef5de78cdc9598281ac -->
+<!-- FILE: index.html sha256=3a7d0f1b60380011260e1fb93993da9b5376494252a76cb2b6359888bd8c6b3f -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1674,7 +1674,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     const msgs=history.concat([{role:"user",content:text}]);
     const out=await postChat(msgs);
     history.push({role:"user",content:text},{role:"assistant",content:out.text});
-    if(history.length>10) history.splice(0,history.length-10);
+    if(history.length>40) history.splice(0,history.length-40);   // keep the whole session in memory (~20 turns); resets on reload/close since it only lives in this tab
     return out;
   }
 
@@ -2289,7 +2289,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=38f0232035235c3d97cd4e0b9ed9f8f4cf70a5eedd3a9e4b56746a47551e55d0 -->
+<!-- FILE: api/chat.js sha256=72ed2f6a6fc7ed460be7afc8874f1fa47381568f22aa596fed4d50fe07ddbd2e -->
 ````js
 // Vercel serverless function — Jarvis brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
@@ -2610,7 +2610,7 @@ function cleanHistory(raw) {
   // only plain user/assistant turns from the browser — never system/tool roles
   return (Array.isArray(raw) ? raw : [])
     .filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
-    .slice(-12)
+    .slice(-40)
     .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
 }
 
