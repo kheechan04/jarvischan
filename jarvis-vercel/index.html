@@ -1512,7 +1512,7 @@
     const mime=(recorder.mimeType||want||"audio/webm").split(";")[0];
     const t0=Date.now();
     let heard=false, loud=0, quietSince=0, floorSum=0, floorN=0, floor=0.04;
-    let floorReady=false, winMin=1, winStart=0;
+    let floorReady=false, winMin=1, winStart=0, sm=-1;
     recChunks=[];
     recorder.ondataavailable=e=>{ if(e.data && e.data.size) recChunks.push(e.data); };
     recorder.onstop=()=>{ clearInterval(vadIv); finishWhisper(mime, t0); };
@@ -1527,7 +1527,13 @@
     // which stays at roughly the same level the whole window, gets folded into the
     // floor so it stops being mistaken for "still talking" once the person goes quiet.
     vadIv=setInterval(()=>{
-      const lv=S.micLevel, t=Date.now()-t0;
+      const raw=S.micLevel, t=Date.now()-t0;
+      // Reading only the voice-band bins (see startMicMeter) makes each single
+      // reading noisier (fewer bins averaged), which kept re-triggering "still
+      // loud" on stray spikes and made the 1.2s quiet timer take many retries
+      // to land — so the VAD works off a lightly smoothed level, not the raw one.
+      sm = sm<0 ? raw : sm*0.55+raw*0.45;
+      const lv=sm;
       if(t<300){ floorSum+=lv; floorN++; return; }
       if(!floorReady){ floor=Math.min(0.1, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
       if(lv<winMin) winMin=lv;
