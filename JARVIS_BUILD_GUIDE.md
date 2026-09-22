@@ -405,6 +405,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 박수 두 번 웨이크가 잘 안 잡힘 | 공유 analyser의 `fftSize=128`(≈2.7ms 창)을 26ms마다 폴링해 대부분의 오디오를 놓침. 게다가 `getUserMedia({audio:true})`가 기본으로 켜는 자동게인·노이즈억제가 박수 같은 임펄스 소리를 눌러버림 | 박수 감지 전용 스트림을 `autoGainControl:false, noiseSuppression:false, echoCancellation:false`로 따로 열고, 그 analyser의 `fftSize`를 2048(≈43ms)로 키워 폴링 공백을 없앰. Whisper 녹음용 스트림은 그대로 둬서 받아쓰기 품질엔 영향 없음 |
 | 웨이크워드로 시작한 대화가 조용해져도 안 끝남 | "Jarvis" 인식 직후 그 음성인식 세션이 마이크를 완전히 놓기도 전에 Whisper용 마이크를 새로 잡으려다, 녹음이 "녹음 중"으로는 뜨지만 실제로는 오디오도 못 받고 종료 이벤트도 안 나는 상태로 멈춤 | 웨이크워드 인식기가 진짜로 끝났다는 신호(`onend`, 400ms 타임아웃 보조)를 받은 뒤에 Whisper 녹음을 시작하도록 순서 변경 |
 | 조용한 방이 아니면 대화가 안 끝남(생활 소음이 계속 "말하는 중"으로 잡힘) | 무음 판정 기준(floor)을 녹음 시작 300ms에 딱 한 번만 재고 끝까지 고정해서 씀. 그 이후 주변 소음이 그보다 커지면 영원히 "말하는 중"으로 오분류됨 | 3초마다 그 구간의 최저값으로 floor를 다시 앵커링. 실제 목소리는 단어·숨 사이 틈이 있어 안 걸리고, 꾸준한 생활 소음만 흡수됨 |
+| floor 재조정 후에도 여전히 말 끝나고 녹음이 안 끝남 | 마이크 레벨을 analyser의 64개 주파수 빈 **전체**(초저음 웅웅거림 ~ 초고음 히스노이즈)를 뭉뚱그려 평균 내서, 목소리와 배경 소음의 신호 구분이 약함 | 사람 목소리 대역(약 300Hz~3.4kHz)에 해당하는 빈만 골라 평균 내도록 변경(`voiceLo`/`voiceHi`, `audioCtx.sampleRate`로 계산). 그 대역 밖 소음은 레벨 계산에서 아예 빠짐 |
 | 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 짧은 조각(최대 80자, 마침표 없는 긴 문장은 단어 단위로 강제 분할)으로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경. 처음엔 180자로 했다가 한국어는 글자당 발음 시간이 길어서 여전히 끊겨 80자로 더 줄임 |
 | 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 문장 큐 방식으로 바꾼 뒤에도, 마지막 조각의 `onend`가 간헐적으로 아예 안 뜨는 경우가 있음(Chrome 음성 이벤트 신뢰성 문제) | 조각마다 글자 수 기반 예상 재생 시간의 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 강제로 다음 단계로 넘어가게 함 |
 
@@ -446,7 +447,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 88,744 bytes | `ee7588f2d3f1853d…` |
+| `index.html` | 89,426 bytes | `207113671c39e469…` |
 | `api/chat.js` | 25,304 bytes | `62a399e72470ba70…` |
 | `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
 | `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
@@ -455,7 +456,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=ee7588f2d3f1853dbeb15a321e73aeb2e43c9521516493c9e747effeb8bf3e04 -->
+<!-- FILE: index.html sha256=207113671c39e469a74c1fd2abde2278f9aec7cf6d95147a1928d26e8ffecee5 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1387,6 +1388,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
      MIC + Web Audio analyser
      ========================================================== */
   let audioCtx=null, analyser=null, freqData=null, micStream=null, rafMic=0, micError="";
+  let voiceLo=1, voiceHi=8;   // frequency-bin range the level meter reads, set once the analyser is sized
   function micHelp(){
     if(micError==="unsupported")
       return "This view can't reach the mic. Open the artifact in its own tab (↗ top-right) — or in Chrome — then allow the microphone.";
@@ -1410,13 +1412,21 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         analyser.fftSize=128; analyser.smoothingTimeConstant=0.75;
         src.connect(analyser);
         freqData=new Uint8Array(analyser.frequencyBinCount);
+        // Averaging the whole spectrum (sub-bass hum up through hiss) blurs the
+        // gap between "someone's talking" and "the room has background noise".
+        // Restricting the level to roughly the voice band (300Hz–3.4kHz, where
+        // most of speech's energy sits) gives a much cleaner silence read.
+        const binHz=audioCtx.sampleRate/analyser.fftSize;
+        voiceLo=Math.max(1,Math.round(300/binHz));
+        voiceHi=Math.min(freqData.length-1,Math.round(3400/binHz));
+        if(voiceHi<=voiceLo) voiceHi=Math.min(freqData.length-1,voiceLo+1);
       }
       if(audioCtx.state==="suspended") await audioCtx.resume();
       const tick=()=>{
         if(!analyser) return;
         analyser.getByteFrequencyData(freqData);
-        let sum=0; for(let i=0;i<freqData.length;i++) sum+=freqData[i];
-        S.micLevel=clamp((sum/freqData.length)/140,0,1);
+        let sum=0; for(let i=voiceLo;i<=voiceHi;i++) sum+=freqData[i];
+        S.micLevel=clamp((sum/(voiceHi-voiceLo+1))/140,0,1);
         rafMic=requestAnimationFrame(tick);
       };
       tick();
