@@ -1242,7 +1242,7 @@
     const msgs=history.concat([{role:"user",content:text}]);
     const out=await postChat(msgs);
     history.push({role:"user",content:text},{role:"assistant",content:out.text});
-    if(history.length>40) history.splice(0,history.length-40);   // keep the whole session in memory (~20 turns); resets on reload/close since it only lives in this tab
+    if(history.length>20) history.splice(0,history.length-20);   // ~10 turns — a balance between remembering the session and keeping replies fast (more history = a bigger prompt = slower every turn); resets on reload/close since it only lives in this tab
     return out;
   }
 
