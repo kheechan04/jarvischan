@@ -1112,12 +1112,25 @@
       log('tts → <span class="'+(v?"ok":"rt")+'">'+(v?v.name.replace(/\(.*?\)/g,"").trim()+" ("+v.lang+")":"system default")+"</span>"); }
     // Chrome silently cuts off long utterances partway through (a long-standing
     // bug: speech just stops with neither onend nor onerror ever firing).
-    // Speaking the reply as a queue of sentence-sized chunks keeps each one
-    // comfortably under that limit so long answers don't go silent mid-sentence.
-    const chunks=(text.match(/[^.!?。！？\n]+[.!?。！？]*\s*/g)||[text]).reduce((out,s)=>{
-      s=s.trim(); if(!s) return out;
+    // Speaking the reply as a queue of short chunks keeps each one comfortably
+    // under that limit. SAFE_LEN is conservative because Korean takes longer
+    // per character to speak than English, so a length that's safe in English
+    // can still trip the cutoff in Korean — and a run-on sentence with no
+    // punctuation is force-split at word boundaries instead of staying whole.
+    const SAFE_LEN=80;
+    const splitLong=s=>{
+      if(s.length<=SAFE_LEN) return [s];
+      const words=s.split(/(\s+)/); const out=[]; let cur="";
+      for(const w of words){
+        if(cur && (cur+w).length>SAFE_LEN){ out.push(cur.trim()); cur=w; } else cur+=w;
+      }
+      if(cur.trim()) out.push(cur.trim());
+      return out.length?out:[s];
+    };
+    const sentences=(text.match(/[^.!?。！？\n]+[.!?。！？]*\s*/g)||[text]).map(s=>s.trim()).filter(Boolean);
+    const chunks=sentences.flatMap(splitLong).reduce((out,s)=>{
       const last=out[out.length-1];
-      if(last && (last+" "+s).length<=180) out[out.length-1]=last+" "+s; else out.push(s);
+      if(last && (last+" "+s).length<=SAFE_LEN) out[out.length-1]=last+" "+s; else out.push(s);
       return out;
     },[]);
     let i=0;
