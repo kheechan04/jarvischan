@@ -1515,7 +1515,32 @@
     let floorReady=false, winMin=1, winStart=0, sm=-1;
     recChunks=[];
     recorder.ondataavailable=e=>{ if(e.data && e.data.size) recChunks.push(e.data); };
-    recorder.onstop=()=>{ clearInterval(vadIv); finishWhisper(mime, t0); };
+
+    // Primary end-of-speech signal: the browser's own SpeechRecognition endpointer
+    // (onspeechend) — a far better-tuned "has this person stopped talking" detector
+    // than any amplitude threshold we could hand-roll. Its transcript is unused —
+    // Whisper still does the real transcription — this instance exists only to
+    // tell us when to stop recording. Only onspeechend is trusted: onend alone can
+    // fire early on browsers that give up quickly when they don't recognize a wake
+    // phrase, which would cut someone off before they'd even started talking. The
+    // amplitude VAD above keeps running underneath as a fallback for browsers
+    // without SpeechRecognition, or in case this endpointer never fires.
+    let endRec=null;
+    if(SR){
+      try{
+        endRec=new SR();
+        endRec.lang=srLang(); endRec.interimResults=false; endRec.continuous=false;
+        endRec.onspeechend=()=>{ log("speech-end <span class='ok'>detected</span>"); stopWhisper(); };
+        endRec.onerror=()=>{};
+        endRec.start();
+      }catch(e){ endRec=null; }
+    }
+
+    recorder.onstop=()=>{
+      clearInterval(vadIv);
+      if(endRec){ try{ endRec.onspeechend=null; endRec.onerror=null; endRec.stop(); }catch(e){} endRec=null; }
+      finishWhisper(mime, t0);
+    };
     recorder.start(250);
     setMode("listening","Speak now — tap again to stop");
     log("mic <b>open</b> · whisper");
