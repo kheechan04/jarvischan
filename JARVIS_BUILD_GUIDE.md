@@ -4,6 +4,8 @@
 
 이 문서 하나에 명세, 구현 순서, 그동안 겪은 함정, 테스트 방법, 그리고 **파일 원본 전체**(맨 아래 부록)가 들어 있어요.
 
+**이미 배포돼 있는 상태에서 이어서 작업하는 거라면:** `jarvis-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvis`, Private)에도 연결돼 있어요. §5-1 추출 스크립트를 다시 돌릴 필요 없이, 파일을 바로 수정하고 §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포돼요(§5-3b). 수정한 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 방식으로 다시 동기화해서 md와 실제 코드가 항상 같은 내용이게 유지해주세요. 현재 상태 요약은 §8 참고.
+
 ---
 
 ## Claude Code에게 이렇게 말하세요
@@ -334,6 +336,17 @@ vercel whoami                                  # 로그인 확인
 vercel deploy --prod --yes --name jarvis-vercel
 ```
 
+### 5-3b. GitHub 연동 & 자동 배포 (2026-09-22에 설정 완료)
+
+현재 이 프로젝트는 GitHub과 연결돼 있어서, **`git push`만 해도 Vercel이 알아서 재배포**해요. `vercel deploy --prod --yes`는 여전히 되지만 이제 굳이 안 써도 됨.
+
+- 저장소: `https://github.com/kheechan04/jarvis` (Private), 소유자 `kheechan04`
+- Vercel 프로젝트 `khchan04/jarvis-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvis-vercel`**로 지정돼 있음(저장소 루트엔 가이드 md도 같이 있어서 이게 꼭 필요함)
+- 새로 Claude Code 세션을 열어서 이어서 작업할 때: 코드 수정 → `git add` → `git commit` → `git push` 하면 끝. 수동으로 `vercel deploy` 안 해도 자동으로 뜸(보통 10초 안팎)
+- 배포 확인은 `vercel ls`로 상태(`● Ready`) 보거나, `curl`로 `https://jarvis-vercel-blush.vercel.app/` 직접 확인
+
+⚠️ **처음 연결할 때 겪은 함정** (자세한 원인은 §6 표 참고): Vercel 계정에 GitHub 로그인 연결 필요 → GitHub에 Vercel 앱 설치(저장소 접근 권한) 필요 → Root Directory 설정 필요 → **로컬 git의 커밋 작성자 이메일이 계정과 안 맞으면 배포가 `Deployment Blocked`로 조용히 멈춤**. 이 저장소는 repo-local로 `git config user.email`을 GitHub 계정 연결 noreply 이메일로 맞춰뒀어서(`280937297+kheechan04@users.noreply.github.com`) 정상 작동 중. 다른 컴퓨터에서 이 저장소를 새로 클론해서 커밋하면 이 문제가 재발할 수 있음 — 그럴 땐 이메일부터 확인.
+
 ### 5-4. 환경변수 — 사용자가 직접
 
 Groq 무료 키는 https://console.groq.com → API Keys에서 만들어요(`gsk_…`).
@@ -410,6 +423,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 스무딩 이후에도 정적 텀이 계속 김 | 진폭(데시벨) 기준 VAD는 아무리 다듬어도 "말이 끝났다"를 소리 크기만으로 판단하는 방식 자체에 한계가 있음 | 브라우저의 `SpeechRecognition` 자체 음성종료 감지(`onspeechend`)를 1차 신호로 사용. Whisper 녹음(MediaRecorder)과 별개로 텍스트는 안 쓰는 보조 인식 세션을 하나 더 띄워서, `onspeechend`가 뜨면 바로 `stopWhisper()`. `onend`만으로는 트리거하지 않음(말을 시작하기도 전에 끊길 위험) — 기존 진폭 VAD·7초/20초 하드캡은 미지원 브라우저·실패 대비 백업으로 유지 |
 | 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 짧은 조각(최대 80자, 마침표 없는 긴 문장은 단어 단위로 강제 분할)으로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경. 처음엔 180자로 했다가 한국어는 글자당 발음 시간이 길어서 여전히 끊겨 80자로 더 줄임 |
 | 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 문장 큐 방식으로 바꾼 뒤에도, 마지막 조각의 `onend`가 간헐적으로 아예 안 뜨는 경우가 있음(Chrome 음성 이벤트 신뢰성 문제) | 조각마다 글자 수 기반 예상 재생 시간의 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 강제로 다음 단계로 넘어가게 함 |
+| GitHub 연동 후 Vercel 배포가 `UNKNOWN` 상태로 몇 시간씩 안 끝남 | 처음엔 "Fix Git Configuration" 버튼으로만 표시돼 원인이 안 보였음. CLI 배포·git push 배포 둘 다 똑같이 막힘. 실제 원인은 Vercel이 이메일로 발송: 로컬 git의 커밋 작성자 이메일(`khchan04@naver.com`, 이 컴퓨터에 예전부터 전역 설정돼 있던 값)이 Vercel 팀 어떤 멤버와도 매칭이 안 돼서 배포를 조용히 계속 보류시킴 | ① Vercel 계정에 GitHub 로그인 연결 ② GitHub에 Vercel 앱 설치(저장소 접근 권한, All repositories로) ③ Vercel 프로젝트 Settings에서 **Root Directory를 `jarvis-vercel`로 지정** ④ 이 저장소에 한해 `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`{id}+{username}@users.noreply.github.com`, `gh api user`로 id 확인 가능)로 맞춤. 넷 다 해야 풀림 — 자세한 절차는 §5-3b |
 
 ---
 
@@ -440,6 +454,23 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - 실제 Groq 대화·한국어 음성 인식 사용자 확인 완료(§5-6 통과)
 - 박수 두 번 웨이크 감지 개선 — 원인과 해결은 위 §6 표 참고. 배포본에서 재확인 완료
 - 소스 저장소: `https://github.com/kheechan04/jarvis` (Private)
+
+### 업데이트 (2026-09-23) — 새 기능 + 안정성 다지기
+
+**배포 방식이 바뀜:** GitHub 연동 완료, 이제 `git push`만 하면 자동 배포됨(§5-3b). 그날 겪은 "Vercel 배포가 계속 `UNKNOWN`으로 멈춤" 문제와 해결(Git 연동·GitHub 앱 설치·Root Directory·커밋 이메일)은 §6 표에 기록.
+
+**새 기능**
+- **웨이크워드**: "Jarvischan" / "자비스찬"이라고 부르면 박수나 버튼 없이 대화 시작. 브라우저 `SpeechRecognition`을 재사용, idle 상태일 때만 동작
+- **이름 변경**: 앱 전체 이름을 Jarvis → **Jarvischan(자비스찬)**으로 변경 — 타이틀·헤더·웨이크워드·시스템 프롬프트까지 전부. 내부 저장소 키/env var 이름은 안 건드림
+- **대화 기억**: 탭이 열려있는 동안 최근 약 10턴을 기억(서버·클라이언트 둘 다 `slice(-20)`). 더 늘리면 응답이 느려져서 절충한 값
+
+**안정성 수정 (모두 §6 표에 원인·해결 기록됨)**
+- 박수 웨이크 인식 개선(전용 스트림 + fftSize 확대)
+- 웨이크워드→Whisper 마이크 핸드오프 경합 수정
+- 무음 감지(VAD) 3단계 개선 끝에 최종적으로 브라우저 자체 `onspeechend`로 교체 — 진폭 기준의 근본적 한계를 우회
+- 긴 답변에서 TTS가 중간에 끊기는 Chrome 버그 우회(문장 큐 분할, 80자 단위, 안전장치 타이머)
+
+**확인이 남은 것:** 사용자가 최신 배포본에서 웨이크워드·무음감지·TTS 안정성을 실사용으로 재확인 중(§5-6). 문제 재발하면 §6 표부터 확인.
 
 ---
 
