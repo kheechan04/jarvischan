@@ -1080,6 +1080,9 @@
   }
   const UA=navigator.userAgent;
   const uaTag = /edg/i.test(UA)?"Edge" : (/chrome|crios/i.test(UA)?"Chrome" : (/firefox/i.test(UA)?"Firefox" : (/safari/i.test(UA)?"Safari":"browser")));
+  // iPadOS reports as "Macintosh" in the UA string (desktop-class Safari), so it's only
+  // distinguishable from real macOS by touch support.
+  const isIOS = /iP(hone|od|ad)/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
   let loggedVoices=false, loggedSpoke=false;
   function loadVoices(){
     if(!("speechSynthesis" in window)) return;
@@ -1535,12 +1538,21 @@
     // phrase, which would cut someone off before they'd even started talking. The
     // amplitude VAD above keeps running underneath as a fallback for browsers
     // without SpeechRecognition, or in case this endpointer never fires.
+    //
+    // Skipped entirely on iOS: it starts fine there but never fires onspeechend
+    // OR onerror (confirmed live — neither log line below ever appears on an
+    // iPad), so it's dead weight at best. At worst, iOS only grants one app
+    // exclusive access to the mic input at a time, so a second recognition
+    // session opening its own capture on top of the already-open recording
+    // stream can starve the original stream's analyser — silently breaking the
+    // amplitude VAD fallback too, which is the actual symptom reported (auto-stop
+    // just doesn't happen on iPad, same before/after the autoGainControl fix).
     let endRec=null;
-    if(SR){
+    if(SR && !isIOS){
       try{
         endRec=new SR();
         endRec.lang=srLang(); endRec.interimResults=false; endRec.continuous=false;
-        endRec.onspeechend=()=>{ log("speech-end <span class='ok'>detected</span>"); stopWhisper(); };
+        endRec.onspeechend=()=>{ log("speech-end <span class='ok'>detected</span>"); stopWhisper("onspeechend"); };
         // Logged (not silently swallowed) because on phones/tablets this endpointer
         // is the flaky part — a second concurrent recognition session on top of the
         // already-open recording stream can error out or just never fire. When that
@@ -1583,17 +1595,29 @@
         floor=Math.min(0.1, floor*0.5+winMin*0.5);
         winMin=1; winStart=t;
       }
-      if(lv>floor+0.08){ if(++loud>=3) heard=true; quietSince=0; }
+      if(lv>floor+0.08){
+        if(++loud>=3 && !heard){ heard=true; log("voice <span class='ok'>detected</span> (lvl "+lv.toFixed(3)+" · floor "+floor.toFixed(3)+")"); }
+        quietSince=0;
+      }
       else{
         loud=0;
-        if(heard && lv<floor+0.035){ if(!quietSince) quietSince=t; else if(t-quietSince>1200) stopWhisper(); }
+        if(heard && lv<floor+0.035){ if(!quietSince) quietSince=t; else if(t-quietSince>1200) stopWhisper("vad-quiet"); }
       }
-      if(!heard && t>7000) stopWhisper();      // nothing said
-      if(t>20000) stopWhisper();               // hard cap keeps uploads small
+      // Once-a-second raw level readout while debugging — cheap visibility into
+      // whether the analyser is seeing any signal at all on a given device,
+      // without flooding the log at the VAD's 100ms poll rate.
+      if(t%1000<100) log("lvl "+lv.toFixed(3)+" · floor "+floor.toFixed(3)+" · heard "+(heard?"y":"n"));
+      if(!heard && t>7000) stopWhisper("no-speech-7s");      // nothing said
+      if(t>20000) stopWhisper("hard-cap-20s");               // hard cap keeps uploads small
     },100);
     return true;
   }
-  function stopWhisper(){ if(recorder && recorder.state==="recording"){ try{ recorder.stop(); }catch(e){} } }
+  function stopWhisper(reason){
+    if(recorder && recorder.state==="recording"){
+      log("stop → <b>"+(reason||"manual")+"</b>");
+      try{ recorder.stop(); }catch(e){}
+    }
+  }
 
   async function finishWhisper(mime, t0){
     recorder=null; stopMicMeter();
@@ -1624,7 +1648,7 @@
   }
 
   async function toggleListen(){
-    if(recorder && recorder.state==="recording"){ stopWhisper(); return; }
+    if(recorder && recorder.state==="recording"){ stopWhisper("manual-tap"); return; }
     if(recActive){ try{rec.stop();}catch(e){} return; }
     if(whisperStarting) return;                      // mic permission prompt still open
     if(S.mode==="speaking"){ speechSynthesis.cancel(); }
