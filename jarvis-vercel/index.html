@@ -1574,7 +1574,7 @@
     setMode("listening","Speak now — tap again to stop");
     log("mic <b>open</b> · whisper");
     // voice-activity detection on the analyser level, relative to the room's noise floor.
-    // The floor isn't just a one-time snapshot: every ~3s it's re-anchored to the
+    // The floor isn't just a one-time snapshot: every ~1.2s it's re-anchored to the
     // quietest reading seen in that window. Real speech still has brief gaps (between
     // words, breaths) that read near-true-ambient, so this doesn't get fooled by
     // someone talking continuously — but steady background noise (traffic, AC hum),
@@ -1599,8 +1599,17 @@
       // against a runaway reading, not because ambient is expected to get there.
       if(!floorReady){ floor=Math.min(0.7, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
       if(lv<winMin) winMin=lv;
-      if(t-winStart>3000){
-        floor=Math.min(0.7, floor*0.5+winMin*0.5);
+      // 1.2s windows, floor snapping straight to that window's minimum (no more
+      // blending half the old floor in): confirmed live that blending made floor
+      // climb toward a noisier-than-expected real ambient at half the gap per
+      // 3s window, so on one iPad it took 5-6 windows (15s+) to become reachable
+      // at all — recording sat there waiting long after the person had gone quiet.
+      // A window this short still holds up against being fooled by a mid-word gap
+      // reading as the new floor, since "heard" only fires on 3 consecutive
+      // above-floor readings and "quiet" needs 1.2s continuous — a lone dip can't
+      // trip either on its own.
+      if(t-winStart>1200){
+        floor=Math.min(0.7, winMin);
         winMin=1; winStart=t;
       }
       if(lv>floor+0.08){
