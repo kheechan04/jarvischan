@@ -1990,10 +1990,18 @@
     laWS.onmessage=(ev)=>{
       let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
       if(msg.type==="auth"){
-        laConnected=!!msg.ok; setLocalAgentUI();
+        laConnected=!!msg.ok;
         log(laConnected ? "local agent <span class='ok'>paired</span>"
           : "local agent <span style='color:var(--crit)'>bad token — click again to re-enter it</span>");
-        if(!laConnected){ try{ localStorage.removeItem("jarvis_agent_token"); }catch(e){} laToken=""; }
+        if(!laConnected){
+          // Reset all the way to "off" instead of leaving laOn true with
+          // nothing connected — otherwise the button gets stuck showing
+          // "connecting…" forever, and re-entering a token needs an extra
+          // click to turn it off first before a click can prompt again.
+          try{ localStorage.removeItem("jarvis_agent_token"); }catch(e){} laToken="";
+          laOn=false; try{ laWS.close(); }catch(e){} laWS=null;
+        }
+        setLocalAgentUI();
         return;
       }
       if(msg.type==="result" && laPending.has(msg.id)){
