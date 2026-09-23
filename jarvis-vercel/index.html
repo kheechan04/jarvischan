@@ -1589,10 +1589,18 @@
       sm = sm<0 ? raw : sm*0.55+raw*0.45;
       const lv=sm;
       if(t<300){ floorSum+=lv; floorN++; return; }
-      if(!floorReady){ floor=Math.min(0.1, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
+      // The 0.1 ceiling here used to be safe because autoGainControl kept a quiet
+      // room's true ambient reading near zero on every device tested. With AGC off
+      // (needed for the VAD to work at all on iOS — see startMicMeter) a raw,
+      // unprocessed ambient level can legitimately sit well above 0.1 depending on
+      // device/room — confirmed live on an iPad where it pinned at the 0.1 cap and
+      // never let the "quiet" threshold become reachable, so recording only ever
+      // ended on the 20s hard cap. Capped higher (0.7) purely as a sanity bound
+      // against a runaway reading, not because ambient is expected to get there.
+      if(!floorReady){ floor=Math.min(0.7, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
       if(lv<winMin) winMin=lv;
       if(t-winStart>3000){
-        floor=Math.min(0.1, floor*0.5+winMin*0.5);
+        floor=Math.min(0.7, floor*0.5+winMin*0.5);
         winMin=1; winStart=t;
       }
       if(lv>floor+0.08){
