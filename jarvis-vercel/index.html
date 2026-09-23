@@ -450,6 +450,10 @@
     logEl.innerHTML = logRows.join("");
     logEl.scrollTop = logEl.scrollHeight;
   }
+  // ?debug=1 forces the telemetry log visible even on narrow screens (it's
+  // hidden by default there to save space) — useful for reading mic/VAD
+  // events live on a phone or tablet instead of needing devtools.
+  try{ if(new URLSearchParams(location.search).get("debug")==="1") logEl.style.display="block"; }catch(e){}
 
   /* ---------------- transcript ---------------- */
   const convo = $("convo");
@@ -942,7 +946,13 @@
     try{
       if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ micError="unsupported"; return false; }
       if(!micStream){
-        micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+        // autoGainControl off: mobile browsers apply it far more aggressively
+        // than desktop, continuously renormalizing level so speech and silence
+        // end up reading almost the same — which is exactly what breaks the
+        // floor-tracking VAD below on phones/tablets. noiseSuppression and
+        // echoCancellation stay on since those help Whisper transcription
+        // instead of hurting it (see CLAP-TO-WAKE below for the contrast).
+        micStream=await navigator.mediaDevices.getUserMedia({audio:{autoGainControl:false}});
         micError="";
       }
       if(!audioCtx){
@@ -1531,9 +1541,16 @@
         endRec=new SR();
         endRec.lang=srLang(); endRec.interimResults=false; endRec.continuous=false;
         endRec.onspeechend=()=>{ log("speech-end <span class='ok'>detected</span>"); stopWhisper(); };
-        endRec.onerror=()=>{};
+        // Logged (not silently swallowed) because on phones/tablets this endpointer
+        // is the flaky part — a second concurrent recognition session on top of the
+        // already-open recording stream can error out or just never fire. When that
+        // happens the amplitude VAD above is the only thing left stopping the
+        // recording, so knowing it failed matters for diagnosing "doesn't stop" reports.
+        endRec.onerror=(ev)=>{ log("speech-end <span style='color:var(--crit)'>endpointer error ("+(ev&&ev.error||"?")+")</span>"); };
         endRec.start();
-      }catch(e){ endRec=null; }
+      }catch(e){ endRec=null; log("speech-end <span style='color:var(--crit)'>endpointer unavailable</span>"); }
+    } else {
+      log("speech-end <span class='rt'>no browser endpointer — VAD only</span>");
     }
 
     recorder.onstop=()=>{
@@ -1662,7 +1679,9 @@
       - autoGainControl/noiseSuppression/echoCancellation are turned
         OFF here because they actively flatten sharp transients like
         claps (they're built to do exactly that to real noise). The
-        Whisper recording stream keeps them on, since that helps
+        Whisper recording stream now also disables autoGainControl for
+        the same reason (see startMicMeter above), but keeps noise
+        suppression and echo cancellation on since those help
         transcription instead of hurting it.
       - fftSize is 2048 (~43ms of audio at 48kHz) instead of the
         meter's 128 (~2.7ms), so a poll every 26ms can't land in a
