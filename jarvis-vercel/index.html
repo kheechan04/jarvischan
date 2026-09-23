@@ -1829,8 +1829,15 @@
      word "Jarvischan") as a fresh wake.
      ========================================================== */
   const wwBtn=$("wakeword"), wwLbl=wwBtn.querySelector(".wwlbl");
-  const WAKE_RE=/\bjarvischan\b|자비스찬/i;
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0;
+  // Matching just the "jarvis"/"자비스" core instead of the full invented name:
+  // "자비스찬" has no dictionary entry, so Google's ASR often mishears the back
+  // half ("찬" → "잔"/"한"/a dropped syllable) unless it's enunciated very
+  // precisely — which was exactly the reported symptom. "자비스"/"jarvis" is
+  // the distinctive, hard-to-confuse chunk and is vanishingly unlikely to show
+  // up in normal conversation on its own, so loosening to it trades a little
+  // precision for a lot of recall.
+  const WAKE_RE=/\bjarvis\b|자비스/i;
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0;
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -1839,10 +1846,15 @@
   function startWakeWordRec(){
     if(wwActive || !SR) return;
     wwRec=new SR();
-    wwRec.continuous=true; wwRec.interimResults=true; wwRec.lang=srLang();
+    wwRec.continuous=true; wwRec.interimResults=true; wwRec.lang=srLang(); wwRec.maxAlternatives=3;
     wwRec.onresult=e=>{
-      const said=(e.results[e.results.length-1][0].transcript||"");
-      if(WAKE_RE.test(said)){
+      // Checking every alternative, not just the top guess: the #1 hypothesis
+      // is often a real dictionary word that merely sounds similar, while the
+      // wake word shows up a rank or two down.
+      const alts=e.results[e.results.length-1];
+      let said="";
+      for(let i=0;i<alts.length;i++){ if(WAKE_RE.test(alts[i].transcript||"")){ said=alts[i].transcript; break; } }
+      if(said){
         log('wake-word <span class="ok">✓ "'+said.trim()+'" → listening</span>');
         // Hand the mic off to Whisper only once this recognizer has actually
         // released it (its onend fires) — starting getUserMedia while Chrome
@@ -1868,7 +1880,7 @@
       // no-speech / network / aborted: the watcher below restarts it
     };
     wwRec.onend=()=>{ wwActive=false; };
-    try{ wwRec.start(); wwActive=true; }catch(e){ wwActive=false; }
+    try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }catch(e){ wwActive=false; }
   }
   function turnWakeWordOff(){
     wwOn=false; clearInterval(wwWatch); stopWakeWordRec();
@@ -1888,6 +1900,13 @@
     wwWatch=setInterval(()=>{
       if(!wwOn) return;
       const shouldListen = S.mode==="idle" && !recActive;
+      // Chrome's continuous recognizer gets quietly less accurate the longer a
+      // single session stays open — reported as "recognizes fine at first,
+      // then stops picking it up." Cycling to a fresh session every 15s (well
+      // under where that degradation was showing up) keeps it as sharp as it
+      // was right after arming. stopWakeWordRec() clears wwActive immediately,
+      // so the very next tick's startWakeWordRec() below picks it back up.
+      if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
       if(shouldListen && !wwActive) startWakeWordRec();
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
