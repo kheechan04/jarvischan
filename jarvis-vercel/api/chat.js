@@ -79,15 +79,27 @@ const DEVICE_TOOLS = [
   fn("open_app", "Open an application on the user's computer by name.", {
     app: { type: "string", description: "Friendly app name from the user's allow-list, e.g. chrome, notepad, calculator, explorer, vscode, spotify" }
   }, ["app"]),
+  fn("close_app", "Close/quit an application on the user's computer by name. Refuses explorer (the Windows desktop shell) and anything not in the allow-list.", {
+    app: { type: "string", description: "Friendly app name, same set as open_app" }
+  }, ["app"]),
   fn("open_url", "Open a URL in the default browser on the user's computer.", {
     url: { type: "string", description: "Full URL starting with http:// or https://" }
   }, ["url"]),
-  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer).", {
-    path: { type: "string", description: "Absolute path, e.g. C:\\Users\\me\\Desktop or C:\\Users\\me\\Documents\\report.docx" }
+  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer). Accepts a friendly folder name (desktop, downloads, documents, pictures) or an absolute path.", {
+    path: { type: "string", description: "e.g. downloads, desktop, or an absolute path like C:\\Users\\me\\Documents\\report.docx" }
   }, ["path"]),
   fn("find_files", "Search the user's Desktop, Documents and Downloads folders for files whose name contains a query.", {
     query: { type: "string", description: "Filename substring to search for" }
-  }, ["query"])
+  }, ["query"]),
+  fn("lock_screen", "Lock the user's computer screen immediately.", {}, []),
+  fn("take_screenshot", "Capture the user's screen and save it as a PNG to their Desktop.", {}, []),
+  fn("set_clipboard", "Copy text to the user's clipboard so they can paste it elsewhere.", {
+    text: { type: "string", description: "The text to copy" }
+  }, ["text"]),
+  fn("adjust_volume", "Change the user's system volume by simulating the hardware volume keys.", {
+    direction: { type: "string", enum: ["up", "down", "mute"], description: "up, down, or mute (toggles mute)" },
+    steps: { type: "integer", description: "How many key-presses, roughly 2% each. Default 5. Ignored for mute." }
+  }, ["direction"])
 ];
 
 function fn(name, description, properties, required) {
@@ -281,6 +293,12 @@ const IMPL = {
     return { result: { queued: true, app: a }, action: { type: "device", command: "open_app", args: { app: a } } };
   },
 
+  async close_app({ app }) {
+    const a = String(app || "").trim().slice(0, 40);
+    if (!a) return { result: { error: "no app name given" } };
+    return { result: { queued: true, app: a }, action: { type: "device", command: "close_app", args: { app: a } } };
+  },
+
   async open_url({ url }) {
     const u = String(url || "").trim();
     if (!/^https?:\/\//i.test(u)) return { result: { error: "url must start with http:// or https://" } };
@@ -299,6 +317,29 @@ const IMPL = {
     return { result: { queued: true, query: q,
       note: "Results aren't known yet — they'll show up in the user's results panel. Don't invent filenames." },
       action: { type: "device", command: "find_files", args: { query: q } } };
+  },
+
+  async lock_screen() {
+    return { result: { queued: true }, action: { type: "device", command: "lock_screen", args: {} } };
+  },
+
+  async take_screenshot() {
+    return { result: { queued: true, note: "Saved to the user's Desktop once it completes." },
+      action: { type: "device", command: "screenshot", args: {} } };
+  },
+
+  async set_clipboard({ text }) {
+    const t = String(text == null ? "" : text).slice(0, 5000);
+    if (!t) return { result: { error: "no text given" } };
+    return { result: { queued: true }, action: { type: "device", command: "set_clipboard", args: { text: t } } };
+  },
+
+  async adjust_volume({ direction, steps }) {
+    const d = String(direction || "").toLowerCase();
+    if (!["up", "down", "mute"].includes(d)) return { result: { error: "direction must be up, down, or mute" } };
+    const n = Math.max(1, Math.min(20, parseInt(steps, 10) || 5));
+    return { result: { queued: true, direction: d, steps: n },
+      action: { type: "device", command: "adjust_volume", args: { direction: d, steps: n } } };
   }
 };
 

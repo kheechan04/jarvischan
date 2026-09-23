@@ -1,14 +1,14 @@
 {
-  "chrome": "start chrome",
-  "notepad": "notepad",
-  "메모장": "notepad",
-  "calculator": "calc",
-  "계산기": "calc",
-  "calc": "calc",
-  "explorer": "explorer .",
-  "file explorer": "explorer .",
-  "탐색기": "explorer .",
-  "vscode": "code",
-  "vs code": "code",
-  "spotify": "start spotify:"
+  "chrome": { "open": "start chrome", "process": "chrome.exe" },
+  "notepad": { "open": "notepad", "process": "notepad.exe" },
+  "메모장": { "open": "notepad", "process": "notepad.exe" },
+  "calculator": { "open": "calc", "process": "CalculatorApp.exe" },
+  "계산기": { "open": "calc", "process": "CalculatorApp.exe" },
+  "calc": { "open": "calc", "process": "CalculatorApp.exe" },
+  "explorer": { "open": "explorer ." },
+  "file explorer": { "open": "explorer ." },
+  "탐색기": { "open": "explorer ." },
+  "vscode": { "open": "code", "process": "Code.exe" },
+  "vs code": { "open": "code", "process": "Code.exe" },
+  "spotify": { "open": "start spotify:", "process": "Spotify.exe" }
 }
