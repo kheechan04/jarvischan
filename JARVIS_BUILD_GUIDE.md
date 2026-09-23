@@ -38,14 +38,22 @@
 ```
 jarvis-vercel/
 ├── index.html      # 화면 전체: HUD 캔버스, 음성, 대화, 결과 카드, 타이머, 테마 (빌드 과정 없음)
-├── api/chat.js     # Vercel Node 서버 함수: 비밀번호 확인, Groq 도구 호출 루프, 도구 7개
+├── api/chat.js     # Vercel Node 서버 함수: 비밀번호 확인, Groq 도구 호출 루프, 도구 7개 + 로컬 에이전트 도구 8개(§9)
 ├── api/transcribe.js # Vercel Node 서버 함수: 녹음 → Groq Whisper 받아쓰기(한국어·영어 감지)
 ├── package.json    # 의존성 없음
 ├── README.md
 └── .env.example    # 환경변수 이름 안내 (실제 값은 넣지 않음)
+
+local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실행하는 동반 프로그램 — §9
+├── agent.js         # ws://localhost:8765 서버, 화이트리스트 명령 실행
+├── apps.json        # 열기/닫기 가능한 앱 허용 목록(친숙한 이름 → 실행 명령·프로세스명)
+├── package.json     # 의존성: ws
+├── start-agent.bat  # 더블클릭 실행용
+├── install-autostart.(ps1|bat), uninstall-autostart.(ps1|bat)  # 윈도우 로그인 시 자동 실행
+└── README.md        # 설치·페어링·명령 목록 사용법
 ```
 
-프레임워크와 빌드 과정, npm 의존성이 모두 없어요. Vercel이 `index.html`은 정적 파일로, `api/chat.js`는 Node 함수로 자동 인식해요.
+프레임워크와 빌드 과정, npm 의존성이 모두 없어요(`local-agent/`는 `ws` 하나만 예외). Vercel이 `index.html`은 정적 파일로, `api/chat.js`는 Node 함수로 자동 인식해요. `local-agent/`는 Vercel에 배포되지 않고 사용자 컴퓨터에서 직접 실행돼요.
 
 ---
 
@@ -424,6 +432,12 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 짧은 조각(최대 80자, 마침표 없는 긴 문장은 단어 단위로 강제 분할)으로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경. 처음엔 180자로 했다가 한국어는 글자당 발음 시간이 길어서 여전히 끊겨 80자로 더 줄임 |
 | 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 문장 큐 방식으로 바꾼 뒤에도, 마지막 조각의 `onend`가 간헐적으로 아예 안 뜨는 경우가 있음(Chrome 음성 이벤트 신뢰성 문제) | 조각마다 글자 수 기반 예상 재생 시간의 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 강제로 다음 단계로 넘어가게 함 |
 | GitHub 연동 후 Vercel 배포가 `UNKNOWN` 상태로 몇 시간씩 안 끝남 | 처음엔 "Fix Git Configuration" 버튼으로만 표시돼 원인이 안 보였음. CLI 배포·git push 배포 둘 다 똑같이 막힘. 실제 원인은 Vercel이 이메일로 발송: 로컬 git의 커밋 작성자 이메일(`khchan04@naver.com`, 이 컴퓨터에 예전부터 전역 설정돼 있던 값)이 Vercel 팀 어떤 멤버와도 매칭이 안 돼서 배포를 조용히 계속 보류시킴 | ① Vercel 계정에 GitHub 로그인 연결 ② GitHub에 Vercel 앱 설치(저장소 접근 권한, All repositories로) ③ Vercel 프로젝트 Settings에서 **Root Directory를 `jarvis-vercel`로 지정** ④ 이 저장소에 한해 `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`{id}+{username}@users.noreply.github.com`, `gh api user`로 id 확인 가능)로 맞춤. 넷 다 해야 풀림 — 자세한 절차는 §5-3b |
+| 노트북(크롬)에선 말 끝나고 바로 끊기는데 폰/패드에선 자동 종료가 거의 안 됨 | iOS Safari는 `onspeechend`(§6 위쪽 항목의 해결책) 자체가 없거나 있어도 이벤트가 전혀 안 옴 — 확인해보니 `endpointer unavailable`/`no browser endpointer` 로그만 찍히고 조용함. 그래서 기기에 상관없이 늘 돌아가던 진폭 기준 VAD로 전부 떠넘겨지는데, 그 VAD가 기대하던 "조용한 방 = 거의 0" 전제가 모바일에서는 `getUserMedia`의 `autoGainControl`이 배경 소음까지 끌어올려서 깨져 있었음 | Whisper 녹음 스트림도 `autoGainControl:false`로 열어 원본 음량을 그대로 읽게 함. iOS에서는 어차피 못 쓰는 보조 `onspeechend` 세션 생성 자체를 건너뛰어 마이크 경합 위험도 없앰 |
+| 위 수정 후에도 아이패드에서 여전히 20초 하드캡까지 안 끊김(로그로 확인: floor가 0.1에 고정) | "조용함" 기준(floor)의 상한을 0.1로 하드코딩해둠 — AGC가 켜져 있던 시절엔 조용한 방 음량이 늘 0.1 아래였지만, AGC를 끄고 나니 그 기기의 진짜 주변 소음이 0.1보다 높아서 floor가 진짜 값을 못 따라감 | 상한을 0.7로 올림(안전장치일 뿐 목표값 아님) |
+| floor 상한을 올렸는데도 말 끝나고 15초 넘게 걸려서야 끊김(로그: floor가 3초 창마다 절반씩만 목표치에 접근) | 3초 창마다 "이전 floor 절반 + 이번 구간 최솟값 절반"으로만 재보정해서, 목표 주변 소음값에 도달하는 데 여러 창(수십 초)이 걸림 | 창을 1.2초로 줄이고, 절반만 섞는 대신 그 구간 최솟값으로 바로 스냅. "조용함" 확정 대기시간도 1.2초 → 0.8초로 단축해 체감 지연을 더 줄임 |
+| 웨이크워드 "자비스찬"을 또박또박 말해야만 인식되고, 켜놓은 지 좀 지나면 그마저도 잘 안 됨 | ① 정규식이 `자비스찬`/`jarvischan` 정확한 문자열만 매칭 — 사전에 없는 만든 이름이라 조금만 웅얼거려도 ASR이 비슷한 다른 음절로 잘못 받아적으면 매칭 실패 ② 크롬의 연속(`continuous:true`) 인식 세션은 오래 켜둘수록 인식 품질이 눈에 띄게 떨어짐(문서화되지 않은 특성) | 정규식을 구분하기 쉬운 핵심 부분(`자비스`/`jarvis`)만 매칭하도록 완화하고 `maxAlternatives:3`으로 1순위 후보 말고 대안들도 검사. 대기 세션을 15초마다 강제로 새 세션으로 교체 |
+| 스크린샷을 찍으면 화면 일부만 잘려서 담김 | PowerShell 프로세스가 기본적으로 DPI-aware가 아니어서, 배율 100% 초과 디스플레이(요즘 노트북 대부분)에서 .NET이 실제 해상도 대신 축소된 "논리 해상도"를 기준으로 캡처함(실측: 2560×1600 화면이 1707×1067로 보임) | 캡처 스크립트 시작 시 `user32.dll`의 `SetProcessDPIAware()`를 호출. 여러 모니터를 다 담기 위해 `PrimaryScreen.Bounds` 대신 `SystemInformation.VirtualScreen` 사용 |
+| (안전) 앱 닫기 명령이 저장 여부 안 묻고 바로 강제종료 | `taskkill /F`를 무조건 사용 — 메모장·VS Code 등에 저장 안 한 내용이 있어도 그냥 날아감 | 기본은 `/F` 없이 정상 종료 요청(앱이 저장 여부를 직접 물어볼 수 있게) 후 실제로 프로세스가 사라졌는지 확인. 강제종료는 `force:true`를 명시적으로 받을 때만, 사용자가 "강제로 꺼줘"라고 말할 때만 LLM이 그 값을 씀 |
 
 ---
 
@@ -434,6 +448,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 2 | 웹 검색 결과 카드(`groq/compound-mini`). 한국어 음성 인식과 한국어 대답은 이미 완료 | 기존 `GROQ_API_KEY` |
 | 3 | 오래 기억하기(Upstash Redis), 노션 저장·조회, 텔레그램 전송, 유튜브 성과 | 서비스별 무료 키 |
 | 4 | 구글 캘린더, Gmail 요약, 인스타그램 인사이트 | OAuth 설정 |
+| 5 | 노트북 앱 제어 — **2026-09-23 완료.** §9 참고 | 완료 |
+| 6 | 로컬 에이전트 맥 포팅(지금은 윈도우 전용 셸 명령) | 실제로 맥 쓰는 사람이 생기면 |
+| 7 | 폰/패드에서 노트북을 원격 제어 — 지금은 "localhost"가 각자 기기 자신을 가리켜서 물리적으로 불가능. 노트북의 LAN IP로 붙거나(브라우저 mixed-content 정책 때문에 인증서 필요) 서버를 거쳐 중계하는 방식으로 재설계해야 함 | 미정 |
 
 ⚠️ **3단계 전에 로그인 방식을 바꿔야 해요.** 지금은 공용 비밀번호 하나라서, 비밀번호를 아는 사람은 누구나 연결된 노션·메일에 접근할 수 있어요. Vercel 로그인 보호를 켜거나 Google 로그인을 붙이세요.
 
@@ -472,11 +489,76 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 **확인이 남은 것:** 사용자가 최신 배포본에서 웨이크워드·무음감지·TTS 안정성을 실사용으로 재확인 중(§5-6). 문제 재발하면 §6 표부터 확인.
 
+### 업데이트 (2026-09-23b) — 모바일 안정화 + 로컬 에이전트로 "진짜 비서" 시작
+
+**모바일(폰/패드)에서 재확인하다 나온 문제 3개, 전부 해결** — 노트북에선 문제없던 게 아이패드로 테스트하니 그대로 드러남. 증상·원인·해결은 전부 §6 표에 기록. 짧게:
+1. iOS엔 `onspeechend`가 아예 없어서 진폭 VAD로 전부 떠넘겨지는데, `autoGainControl`이 켜져 있어 그 VAD가 못 씀 → 꺼서 해결
+2. VAD의 "조용함" 기준 상한이 0.1로 박혀 있어서 AGC 끈 뒤 진짜 소음 레벨(그보다 높음)을 못 따라감 → 상한 상향
+3. 기준 재보정이 3초 창·절반씩 섞기라 너무 느림(15초+) → 1.2초 창·즉시 스냅으로 단축
+
+**웨이크워드 인식률도 같이 손봄**: 정규식을 핵심 음절만 매칭하도록 완화, 인식 후보 3개까지 검사, 대기 세션 15초마다 자동 교체(§6 표 참고).
+
+**새 기능 — 로컬 에이전트 (노트북 앱 제어)**: 자세한 내용은 §9. Vercel 서버는 클라우드 함수라 사용자 컴퓨터에 절대 닿을 수 없다는 게 출발점 — 그래서 노트북에서 따로 실행하는 작은 동반 프로그램(`local-agent/`)을 만들고, 웹페이지가 `ws://localhost:8765`로 직접 붙어 LLM의 도구 호출을 거기로 중계하는 구조로 설계했다. 화이트리스트 방식(앱 열기·닫기, URL/파일/폴더 열기, 파일 검색, 화면 잠금, 스크린샷, 클립보드, 볼륨)만 지원하고 임의 명령 실행·삭제·종료/재시작은 의도적으로 뺐다.
+
+**확인이 남은 것:** 없음 — 이번 라운드는 전부 실기기(아이패드) 로그로 원인을 확인하고, 로컬 에이전트도 실제 명령을 실행해 결과를 확인한 뒤 배포함.
+
+---
+
+## 9. 로컬 에이전트 — 노트북 앱 제어
+
+### 왜 서버가 아니라 별도 프로그램인가
+
+`api/chat.js`의 기존 도구(날씨·환율 등)는 전부 Vercel 서버에서 직접 실행된다. 서버는 인터넷에 공개된 API만 부를 수 있는 **상태 없는 클라우드 함수**라서, 사용자의 노트북처럼 인터넷에 열려있지 않은 개인 기기에는 원천적으로 닿을 방법이 없다. 그래서 "앱을 열어줘" 같은 요청은 서버가 아니라 **사용자의 노트북에서 직접 실행되는 별도 프로그램**이 처리해야 한다 — 이게 `local-agent/` 폴더의 존재 이유다.
+
+### 구조
+
+```
+브라우저(index.html) ──ws://localhost:8765──▶ local-agent/agent.js ──▶ 실제 OS 명령
+       ▲                                              │
+       └──────────── LLM 도구 호출 결과 relay ◀────────┘
+```
+
+1. 사용자가 `local-agent/`에서 `npm start`(또는 `start-agent.bat` 더블클릭)로 에이전트를 실행하면, 처음 한 번 페어링 토큰이 생성되고 콘솔에 출력된다.
+2. 브라우저에서 "Local agent" 버튼을 눌러 그 토큰을 입력하면 `ws://localhost:8765`로 웹소켓이 열린다. 크롬은 https 페이지에서 `localhost`로의 연결은 mixed-content 정책 예외로 허용해서 별도 인증서가 필요 없다.
+3. LLM이 `open_app` 같은 도구를 호출하면, `api/chat.js`는 실행하지 않고 `{type:"device", command:"open_app", args:{...}}` 형태의 액션만 만들어 브라우저로 돌려준다(타이머 도구와 같은 패턴).
+4. 브라우저는 그 액션을 웹소켓으로 에이전트에 전달하고, 에이전트가 실제로 실행한 뒤 결과(성공/실패)를 돌려준다. LLM의 말소리 답변은 이 실제 결과가 나오기 *전에* 생성되므로, 진짜 결과는 로그/배너/카드로 별도 표시된다.
+
+### 보안 — 화이트리스트, 페어링 토큰, Origin 검사
+
+개인용 단일 사용자 도구로 설계했고, 세 겹으로 제한한다.
+- **화이트리스트만 실행**: `open_app`/`close_app`은 `apps.json`에 등록된 앱만, 나머지 명령도 정해진 안전한 동작만 — 임의 셸 명령 실행은 없음
+- **의도적으로 안 넣은 것**: 컴퓨터 종료/재시작/절전, 파일 삭제/이동, 임의 프로세스 강제종료, 포커스된 창에 텍스트 자동 입력. 음성 인식이 잘못 들었을 때 되돌리기 어렵거나 위험한 동작이라, 넣게 되면 별도 확인 절차부터 설계해야 함
+- **페어링 토큰**: 에이전트 첫 실행 시 무작위로 생성돼 `~/.jarvischan-agent/token.txt`에 저장. 브라우저는 이 토큰 없이는 어떤 명령도 못 보냄
+- **Origin 검사**: 배포된 Jarvischan 주소가 아닌 곳에서의 연결 시도는 핸드셰이크 단계에서 거부
+
+### 지원 명령
+
+| 명령 | 동작 | 비고 |
+|---|---|---|
+| `open_app` / `close_app` | `apps.json`에 등록된 앱 열기/닫기 | 닫기는 기본이 정상 종료(저장 프롬프트 존중), `force:true`일 때만 강제종료. `explorer`는 데스크톱 셸이라 닫기 자체가 항상 거부됨 |
+| `open_url` | 기본 브라우저로 URL 열기 | `http(s)://`만 허용 |
+| `open_path` | 파일/폴더 열기 | `desktop`/`downloads`/`documents`/`pictures`/`바탕화면`/`다운로드`/`문서` 같은 별칭 지원, 전체 경로도 가능 |
+| `find_files` | Desktop/Documents/Downloads에서 파일명 검색 | 읽기 전용, 최대 8개·깊이 5 |
+| `lock_screen` | 화면 잠금 | |
+| `take_screenshot`(에이전트 쪽 명령명은 `screenshot`) | 전체 화면 캡처 후 바탕화면에 저장 | DPI-aware 처리로 고배율 디스플레이에서도 전체 캡처(§6 표) |
+| `set_clipboard` | 클립보드에 텍스트 복사 | |
+| `adjust_volume` | 볼륨 올리기/내리기/음소거 | 실제 하드웨어 볼륨 키를 시뮬레이션 |
+
+### 편의 기능
+
+- `start-agent.bat`: 더블클릭으로 실행(터미널 명령을 몰라도 됨)
+- `install-autostart.(ps1\|bat)` / `uninstall-autostart.(ps1\|bat)`: 윈도우 로그인 시 자동 실행되는 시작프로그램 바로가기를 추가/제거
+- 브라우저 쪽은 연결이 끊기면 5초 뒤 자동 재시도하고, 페이지를 다시 열 때 저장된 토큰으로 자동 접속 — 한 번 페어링하면 이후로는 버튼을 누를 일이 거의 없음
+
+### 다른 사람이 쓰려면
+
+같은 컴퓨터를 같이 쓰는 사람은 같은 토큰(`~/.jarvischan-agent/token.txt`)을 그대로 쓰면 된다. 자기 컴퓨터에서 쓰려는 사람은 `local-agent/` 폴더를 통째로 복사해서(zip 등으로 전달), Node.js 설치 후 그 폴더에서 `npm install` 한 번, 이후로는 `start-agent.bat`만 실행하면 된다 — 각자 자기 컴퓨터의 에이전트에만 페어링되고, 서로의 컴퓨터는 건드릴 수 없다. 상세 사용법은 `local-agent/README.md`. **지금은 윈도우 전용**(`start`/`explorer`/`taskkill`/`rundll32` 사용) — 맥에선 포팅이 필요하다(§7 표).
+
 ---
 
 ## 부록 — 파일 원본
 
-아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요.
+아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 6개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
@@ -489,7 +571,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=2f1508a41f947080db7124759c71f194ca6c6e5fa56b88fe2028629119563b04 -->
+<!-- FILE: index.html sha256=9af41f620a06b4de3eb822d22f9ccfbc0cbacb8e680ce8096ef2aa8d8039a6ea -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -859,6 +941,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         <span class="cdot" aria-hidden="true"></span>
         <span class="wwlbl">Say "Jarvischan" to wake · off</span>
       </button>
+      <button class="wake-toggle" id="localagent" aria-pressed="false" title="Connect to the local agent so Jarvischan can open apps/files on this computer">
+        <span class="cdot" aria-hidden="true"></span>
+        <span class="lalbl">Local agent · off</span>
+      </button>
       <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="English voice"></select></label>
       <label class="voice-sel"><span>Lang</span><select id="langSel" aria-label="Language">
         <option value="auto">Auto</option><option value="ko">한국어</option><option value="en">English</option></select></label>
@@ -943,6 +1029,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     logEl.innerHTML = logRows.join("");
     logEl.scrollTop = logEl.scrollHeight;
   }
+  // ?debug=1 forces the telemetry log visible even on narrow screens (it's
+  // hidden by default there to save space) — useful for reading mic/VAD
+  // events live on a phone or tablet instead of needing devtools.
+  try{ if(new URLSearchParams(location.search).get("debug")==="1") logEl.style.display="block"; }catch(e){}
 
   /* ---------------- transcript ---------------- */
   const convo = $("convo");
@@ -1435,7 +1525,13 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     try{
       if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ micError="unsupported"; return false; }
       if(!micStream){
-        micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+        // autoGainControl off: mobile browsers apply it far more aggressively
+        // than desktop, continuously renormalizing level so speech and silence
+        // end up reading almost the same — which is exactly what breaks the
+        // floor-tracking VAD below on phones/tablets. noiseSuppression and
+        // echoCancellation stay on since those help Whisper transcription
+        // instead of hurting it (see CLAP-TO-WAKE below for the contrast).
+        micStream=await navigator.mediaDevices.getUserMedia({audio:{autoGainControl:false}});
         micError="";
       }
       if(!audioCtx){
@@ -1563,6 +1659,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   }
   const UA=navigator.userAgent;
   const uaTag = /edg/i.test(UA)?"Edge" : (/chrome|crios/i.test(UA)?"Chrome" : (/firefox/i.test(UA)?"Firefox" : (/safari/i.test(UA)?"Safari":"browser")));
+  // iPadOS reports as "Macintosh" in the UA string (desktop-class Safari), so it's only
+  // distinguishable from real macOS by touch support.
+  const isIOS = /iP(hone|od|ad)/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
   let loggedVoices=false, loggedSpoke=false;
   function loadVoices(){
     if(!("speechSynthesis" in window)) return;
@@ -1745,7 +1844,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   async function postChat(messages){
     const r=await fetch("/api/chat",{
       method:"POST", headers:{"content-type":"application/json"},
-      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref})
+      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref, localAgent:laConnected})
     });
     if(r.status===401){ authed=false; const e=new Error("bad password"); e.code=401; throw e; }
     if(r.status===429){ const e=new Error("busy"); e.code=429; throw e; }
@@ -1919,9 +2018,35 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       const items=[].concat(...groups.map(g=>g.items||[]));
       showResults(groups.map(g=>g.title).join(" + "), items);
     }
-    (out.actions||[]).forEach(a=>{ if(a && a.type==="timer" && a.seconds>0) startTimer(a.seconds, a.label); });
+    (out.actions||[]).forEach(a=>{
+      if(a && a.type==="timer" && a.seconds>0) startTimer(a.seconds, a.label);
+      if(a && a.type==="device") runDeviceAction(a.command, a.args||{});
+    });
     if(out.tools && out.tools.length)
       log('tools → <span class="rt">'+out.tools.join(", ").replace(/[<>&]/g,"")+"</span>");
+  }
+
+  // Relays a device action (open_app/open_url/open_path/find_files) to the
+  // local agent and shows what actually happened — the spoken reply was
+  // already generated before this runs (the server can't know the real
+  // outcome, only that it dispatched the request), so this is the only place
+  // that reports the true result back to the user.
+  async function runDeviceAction(command, args){
+    log('device → <span class="rt">'+String(command).replace(/[<>&]/g,"")+"</span> "+
+      JSON.stringify(args).replace(/[<>&]/g,"").slice(0,120));
+    const r=await localAgentSend(command, args);
+    if(!r.ok){
+      log('device <span style="color:var(--crit)">'+trim(r.error||"failed",80).replace(/[<>&]/g,"")+"</span>");
+      banner.textContent = lastLang==="ko"
+        ? "로컬 에이전트 명령 실패: "+(r.error||"알 수 없는 오류")
+        : "Local agent action failed: "+(r.error||"unknown error");
+      return;
+    }
+    log('device <span class="ok">'+trim(r.message||"done",80).replace(/[<>&]/g,"")+"</span>");
+    if(command==="find_files" && Array.isArray(r.results)){
+      showResults(lastLang==="ko"?"파일 검색 · "+args.query:"file search · "+args.query,
+        r.results.map(p=>({title:p.split(/[\\\/]/).pop(), desc:p})));
+    }
   }
 
   // spokenLang: what Whisper detected ("ko"/"en"), if the input came from voice
@@ -1983,7 +2108,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   const micBtn=$("mic"), txt=$("txt"), sendBtn=$("send");
 
   /* ---- voice input via Groq Whisper (/api/transcribe) ----
-     Records one utterance, stops after ~1.2 s of silence (or on a second tap),
+     Records one utterance, stops after ~0.8 s of silence (or on a second tap),
      and lets Whisper tell Korean from English. Works in any browser that can
      record; the browser recognizer is the fallback. */
   const canRecord = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -2018,15 +2143,31 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     // phrase, which would cut someone off before they'd even started talking. The
     // amplitude VAD above keeps running underneath as a fallback for browsers
     // without SpeechRecognition, or in case this endpointer never fires.
+    //
+    // Skipped entirely on iOS: it starts fine there but never fires onspeechend
+    // OR onerror (confirmed live — neither log line below ever appears on an
+    // iPad), so it's dead weight at best. At worst, iOS only grants one app
+    // exclusive access to the mic input at a time, so a second recognition
+    // session opening its own capture on top of the already-open recording
+    // stream can starve the original stream's analyser — silently breaking the
+    // amplitude VAD fallback too, which is the actual symptom reported (auto-stop
+    // just doesn't happen on iPad, same before/after the autoGainControl fix).
     let endRec=null;
-    if(SR){
+    if(SR && !isIOS){
       try{
         endRec=new SR();
         endRec.lang=srLang(); endRec.interimResults=false; endRec.continuous=false;
-        endRec.onspeechend=()=>{ log("speech-end <span class='ok'>detected</span>"); stopWhisper(); };
-        endRec.onerror=()=>{};
+        endRec.onspeechend=()=>{ log("speech-end <span class='ok'>detected</span>"); stopWhisper("onspeechend"); };
+        // Logged (not silently swallowed) because on phones/tablets this endpointer
+        // is the flaky part — a second concurrent recognition session on top of the
+        // already-open recording stream can error out or just never fire. When that
+        // happens the amplitude VAD above is the only thing left stopping the
+        // recording, so knowing it failed matters for diagnosing "doesn't stop" reports.
+        endRec.onerror=(ev)=>{ log("speech-end <span style='color:var(--crit)'>endpointer error ("+(ev&&ev.error||"?")+")</span>"); };
         endRec.start();
-      }catch(e){ endRec=null; }
+      }catch(e){ endRec=null; log("speech-end <span style='color:var(--crit)'>endpointer unavailable</span>"); }
+    } else {
+      log("speech-end <span class='rt'>no browser endpointer — VAD only</span>");
     }
 
     recorder.onstop=()=>{
@@ -2038,7 +2179,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     setMode("listening","Speak now — tap again to stop");
     log("mic <b>open</b> · whisper");
     // voice-activity detection on the analyser level, relative to the room's noise floor.
-    // The floor isn't just a one-time snapshot: every ~3s it's re-anchored to the
+    // The floor isn't just a one-time snapshot: every ~0.7s it's re-anchored to the
     // quietest reading seen in that window. Real speech still has brief gaps (between
     // words, breaths) that read near-true-ambient, so this doesn't get fooled by
     // someone talking continuously — but steady background noise (traffic, AC hum),
@@ -2053,23 +2194,57 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       sm = sm<0 ? raw : sm*0.55+raw*0.45;
       const lv=sm;
       if(t<300){ floorSum+=lv; floorN++; return; }
-      if(!floorReady){ floor=Math.min(0.1, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
+      // The 0.1 ceiling here used to be safe because autoGainControl kept a quiet
+      // room's true ambient reading near zero on every device tested. With AGC off
+      // (needed for the VAD to work at all on iOS — see startMicMeter) a raw,
+      // unprocessed ambient level can legitimately sit well above 0.1 depending on
+      // device/room — confirmed live on an iPad where it pinned at the 0.1 cap and
+      // never let the "quiet" threshold become reachable, so recording only ever
+      // ended on the 20s hard cap. Capped higher (0.7) purely as a sanity bound
+      // against a runaway reading, not because ambient is expected to get there.
+      if(!floorReady){ floor=Math.min(0.7, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
       if(lv<winMin) winMin=lv;
-      if(t-winStart>3000){
-        floor=Math.min(0.1, floor*0.5+winMin*0.5);
+      // 1.2s windows, floor snapping straight to that window's minimum (no more
+      // blending half the old floor in): confirmed live that blending made floor
+      // climb toward a noisier-than-expected real ambient at half the gap per
+      // 3s window, so on one iPad it took 5-6 windows (15s+) to become reachable
+      // at all — recording sat there waiting long after the person had gone quiet.
+      // A window this short still holds up against being fooled by a mid-word gap
+      // reading as the new floor, since "heard" only fires on 3 consecutive
+      // above-floor readings and "quiet" needs sustained silence — a lone dip
+      // can't trip either on its own.
+      if(t-winStart>700){
+        floor=Math.min(0.7, winMin);
         winMin=1; winStart=t;
       }
-      if(lv>floor+0.08){ if(++loud>=3) heard=true; quietSince=0; }
+      if(lv>floor+0.08){
+        if(++loud>=3 && !heard){ heard=true; log("voice <span class='ok'>detected</span> (lvl "+lv.toFixed(3)+" · floor "+floor.toFixed(3)+")"); }
+        quietSince=0;
+      }
       else{
         loud=0;
-        if(heard && lv<floor+0.035){ if(!quietSince) quietSince=t; else if(t-quietSince>1200) stopWhisper(); }
+        // 800ms, down from the original 1.2s: on iOS this quiet timer is the only
+        // stop signal there is (no onspeechend), and the full 1.2s plus the time
+        // for the floor above to converge was landing noticeably behind a
+        // laptop's near-instant browser endpointer. Still long enough to not
+        // trip on a mid-sentence breath.
+        if(heard && lv<floor+0.035){ if(!quietSince) quietSince=t; else if(t-quietSince>800) stopWhisper("vad-quiet"); }
       }
-      if(!heard && t>7000) stopWhisper();      // nothing said
-      if(t>20000) stopWhisper();               // hard cap keeps uploads small
+      // Once-a-second raw level readout while debugging — cheap visibility into
+      // whether the analyser is seeing any signal at all on a given device,
+      // without flooding the log at the VAD's 100ms poll rate.
+      if(t%1000<100) log("lvl "+lv.toFixed(3)+" · floor "+floor.toFixed(3)+" · heard "+(heard?"y":"n"));
+      if(!heard && t>7000) stopWhisper("no-speech-7s");      // nothing said
+      if(t>20000) stopWhisper("hard-cap-20s");               // hard cap keeps uploads small
     },100);
     return true;
   }
-  function stopWhisper(){ if(recorder && recorder.state==="recording"){ try{ recorder.stop(); }catch(e){} } }
+  function stopWhisper(reason){
+    if(recorder && recorder.state==="recording"){
+      log("stop → <b>"+(reason||"manual")+"</b>");
+      try{ recorder.stop(); }catch(e){}
+    }
+  }
 
   async function finishWhisper(mime, t0){
     recorder=null; stopMicMeter();
@@ -2100,7 +2275,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   }
 
   async function toggleListen(){
-    if(recorder && recorder.state==="recording"){ stopWhisper(); return; }
+    if(recorder && recorder.state==="recording"){ stopWhisper("manual-tap"); return; }
     if(recActive){ try{rec.stop();}catch(e){} return; }
     if(whisperStarting) return;                      // mic permission prompt still open
     if(S.mode==="speaking"){ speechSynthesis.cancel(); }
@@ -2155,7 +2330,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       - autoGainControl/noiseSuppression/echoCancellation are turned
         OFF here because they actively flatten sharp transients like
         claps (they're built to do exactly that to real noise). The
-        Whisper recording stream keeps them on, since that helps
+        Whisper recording stream now also disables autoGainControl for
+        the same reason (see startMicMeter above), but keeps noise
+        suppression and echo cancellation on since those help
         transcription instead of hurting it.
       - fftSize is 2048 (~43ms of audio at 48kHz) instead of the
         meter's 128 (~2.7ms), so a poll every 26ms can't land in a
@@ -2257,8 +2434,15 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
      word "Jarvischan") as a fresh wake.
      ========================================================== */
   const wwBtn=$("wakeword"), wwLbl=wwBtn.querySelector(".wwlbl");
-  const WAKE_RE=/\bjarvischan\b|자비스찬/i;
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0;
+  // Matching just the "jarvis"/"자비스" core instead of the full invented name:
+  // "자비스찬" has no dictionary entry, so Google's ASR often mishears the back
+  // half ("찬" → "잔"/"한"/a dropped syllable) unless it's enunciated very
+  // precisely — which was exactly the reported symptom. "자비스"/"jarvis" is
+  // the distinctive, hard-to-confuse chunk and is vanishingly unlikely to show
+  // up in normal conversation on its own, so loosening to it trades a little
+  // precision for a lot of recall.
+  const WAKE_RE=/\bjarvis\b|자비스/i;
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0;
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -2267,10 +2451,15 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   function startWakeWordRec(){
     if(wwActive || !SR) return;
     wwRec=new SR();
-    wwRec.continuous=true; wwRec.interimResults=true; wwRec.lang=srLang();
+    wwRec.continuous=true; wwRec.interimResults=true; wwRec.lang=srLang(); wwRec.maxAlternatives=3;
     wwRec.onresult=e=>{
-      const said=(e.results[e.results.length-1][0].transcript||"");
-      if(WAKE_RE.test(said)){
+      // Checking every alternative, not just the top guess: the #1 hypothesis
+      // is often a real dictionary word that merely sounds similar, while the
+      // wake word shows up a rank or two down.
+      const alts=e.results[e.results.length-1];
+      let said="";
+      for(let i=0;i<alts.length;i++){ if(WAKE_RE.test(alts[i].transcript||"")){ said=alts[i].transcript; break; } }
+      if(said){
         log('wake-word <span class="ok">✓ "'+said.trim()+'" → listening</span>');
         // Hand the mic off to Whisper only once this recognizer has actually
         // released it (its onend fires) — starting getUserMedia while Chrome
@@ -2296,7 +2485,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // no-speech / network / aborted: the watcher below restarts it
     };
     wwRec.onend=()=>{ wwActive=false; };
-    try{ wwRec.start(); wwActive=true; }catch(e){ wwActive=false; }
+    try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }catch(e){ wwActive=false; }
   }
   function turnWakeWordOff(){
     wwOn=false; clearInterval(wwWatch); stopWakeWordRec();
@@ -2316,11 +2505,116 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     wwWatch=setInterval(()=>{
       if(!wwOn) return;
       const shouldListen = S.mode==="idle" && !recActive;
+      // Chrome's continuous recognizer gets quietly less accurate the longer a
+      // single session stays open — reported as "recognizes fine at first,
+      // then stops picking it up." Cycling to a fresh session every 15s (well
+      // under where that degradation was showing up) keeps it as sharp as it
+      // was right after arming. stopWakeWordRec() clears wwActive immediately,
+      // so the very next tick's startWakeWordRec() below picks it back up.
+      if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
       if(shouldListen && !wwActive) startWakeWordRec();
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
   });
+
+  /* ==========================================================
+     LOCAL AGENT — a small companion program the user runs on this
+     computer (separate from this web page) that Jarvischan talks to
+     over a plain WebSocket to open apps, URLs, files/folders, and
+     search for files. The Vercel server can't do any of this itself —
+     it's a stateless cloud function with no route to the user's own
+     machine — so the browser connects straight to ws://localhost and
+     the LLM's tool calls get relayed here instead of running server-side
+     (see askBrain/handleTools below for the "device" action type).
+
+     A pairing token (printed once by the agent on first run, pasted into
+     this page and kept in localStorage) stops any other page or process
+     from issuing commands to it — this is a personal single-user tool,
+     not a hardened multi-tenant service.
+     ========================================================== */
+  const laBtn=$("localagent"), laLbl=laBtn.querySelector(".lalbl");
+  const LA_URL="ws://localhost:8765";
+  let laOn=false, laWS=null, laConnected=false, laPending=new Map(), laSeq=0, laReconnectTimer=0;
+  let laToken=""; try{ laToken=localStorage.getItem("jarvis_agent_token")||""; }catch(e){}
+
+  function setLocalAgentUI(){
+    laBtn.setAttribute("aria-pressed", laConnected?"true":"false");
+    laLbl.textContent = laConnected ? "Local agent · connected" : (laOn ? "Local agent · connecting…" : "Local agent · off");
+  }
+  function localAgentSend(command, args){
+    return new Promise((resolve)=>{
+      if(!laConnected || !laWS){ resolve({ok:false, error:"local agent not connected"}); return; }
+      const id="c"+(++laSeq);
+      laPending.set(id, resolve);
+      // If the agent never answers (app hung, action stalled), don't leave
+      // the caller hanging forever — resolve with a timeout error instead.
+      setTimeout(()=>{ if(laPending.has(id)){ laPending.delete(id); resolve({ok:false, error:"timed out"}); } }, 8000);
+      try{ laWS.send(JSON.stringify({type:"cmd", id, command, args})); }
+      catch(e){ laPending.delete(id); resolve({ok:false, error:"send failed"}); }
+    });
+  }
+  function connectLocalAgent(){
+    if(!laToken){
+      laToken=(prompt("Paste the pairing token shown by the local agent (printed once when you run it with npm start):")||"").trim();
+      if(!laToken) return;
+      try{ localStorage.setItem("jarvis_agent_token", laToken); }catch(e){}
+    }
+    try{ laWS=new WebSocket(LA_URL); }catch(e){ log("local agent <span style='color:var(--crit)'>can't connect</span>"); return; }
+    laWS.onopen=()=>{ try{ laWS.send(JSON.stringify({type:"auth", token:laToken})); }catch(e){} };
+    laWS.onmessage=(ev)=>{
+      let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
+      if(msg.type==="auth"){
+        laConnected=!!msg.ok;
+        log(laConnected ? "local agent <span class='ok'>paired</span>"
+          : "local agent <span style='color:var(--crit)'>bad token — click again to re-enter it</span>");
+        if(!laConnected){
+          // Reset all the way to "off" instead of leaving laOn true with
+          // nothing connected — otherwise the button gets stuck showing
+          // "connecting…" forever, and re-entering a token needs an extra
+          // click to turn it off first before a click can prompt again.
+          try{ localStorage.removeItem("jarvis_agent_token"); }catch(e){} laToken="";
+          laOn=false; try{ laWS.close(); }catch(e){} laWS=null;
+        }
+        setLocalAgentUI();
+        return;
+      }
+      if(msg.type==="result" && laPending.has(msg.id)){
+        laPending.get(msg.id)(msg); laPending.delete(msg.id);
+      }
+    };
+    laWS.onerror=()=>{};
+    laWS.onclose=()=>{
+      laConnected=false; laWS=null; setLocalAgentUI();
+      // laOn is only still true here for an *unexpected* drop (agent
+      // restarted, laptop woke from sleep, brief network blip) — a
+      // deliberate turn-off or a bad-token reset both already set it false
+      // before closing. Keep retrying quietly in the background instead of
+      // making the user notice and click the button again every time.
+      if(laOn){
+        log("local agent <span class='rt'>disconnected — retrying…</span>");
+        clearTimeout(laReconnectTimer);
+        laReconnectTimer=setTimeout(()=>{ if(laOn && !laConnected) connectLocalAgent(); }, 5000);
+      }
+    };
+    setLocalAgentUI();
+  }
+  laBtn.addEventListener("click", ()=>{
+    if(laOn){
+      laOn=false; laConnected=false;
+      clearTimeout(laReconnectTimer);
+      if(laWS){ try{ laWS.close(); }catch(e){} laWS=null; }
+      setLocalAgentUI();
+      log("local agent <span class='rt'>off</span>");
+      return;
+    }
+    laOn=true; setLocalAgentUI();
+    connectLocalAgent();
+  });
+  // Reconnect automatically on page load if we already have a saved token
+  // from a previous successful pairing — otherwise "hands-free" still meant
+  // clicking a button and nothing else every single time the page opened.
+  if(laToken){ laOn=true; setLocalAgentUI(); connectLocalAgent(); }
 
   /* ==========================================================
      CONNECTION STATUS
@@ -2403,7 +2697,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=0b93413f22d798bae7ce6181919fe6912caf0f61362ed69924770da2337fd519 -->
+<!-- FILE: api/chat.js sha256=2ea0506f8b45334073c7ab2937b89b11a65992857a0c4817a447e7aa2a8c9bdd -->
 ````js
 // Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
@@ -2437,7 +2731,7 @@ const SYSTEM = [
   "- general conversation, brainstorming and answering from your own knowledge",
   "- understanding and answering in Korean or English, by voice or text",
   "",
-  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, files, long-term memory (you forget everything when the page reloads), or acting on other apps.",
+  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (opening apps/URLs/files, searching for files) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
   "Never claim you did, queued, drafted, scheduled or saved something unless a tool result confirms it. If asked for something you cannot do, say so plainly in one sentence and offer the closest thing you can do.",
   "When asked what you can do, name three or four of the real abilities above in one or two sentences — never invent others.",
   "Use tool results as the only source for live facts. If a tool returns an error, say what failed in plain words.",
@@ -2477,6 +2771,37 @@ const TOOLS = [
     seconds: { type: "integer", description: "Extra seconds. Default 0." },
     label: { type: "string", description: "Short label, e.g. focus, tea" }
   }, ["minutes"])
+];
+
+// Only offered when the browser reports its local agent is connected (see
+// module.exports below) — these dispatch to that agent and run for real on
+// the user's own computer, they don't execute here on the server.
+const DEVICE_TOOLS = [
+  fn("open_app", "Open an application on the user's computer by name.", {
+    app: { type: "string", description: "Friendly app name from the user's allow-list, e.g. chrome, notepad, calculator, explorer, vscode, spotify" }
+  }, ["app"]),
+  fn("close_app", "Close/quit an application on the user's computer by name. Tries a normal close first, which lets the app prompt to save unsaved changes — set force only if the user explicitly says to force/kill it, since that skips any save prompt. Refuses explorer (the Windows desktop shell) and anything not in the allow-list.", {
+    app: { type: "string", description: "Friendly app name, same set as open_app" },
+    force: { type: "boolean", description: "true only if the user explicitly asked to force-close/kill it. Default false." }
+  }, ["app"]),
+  fn("open_url", "Open a URL in the default browser on the user's computer.", {
+    url: { type: "string", description: "Full URL starting with http:// or https://" }
+  }, ["url"]),
+  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer). Accepts a friendly folder name (desktop, downloads, documents, pictures) or an absolute path.", {
+    path: { type: "string", description: "e.g. downloads, desktop, or an absolute path like C:\\Users\\me\\Documents\\report.docx" }
+  }, ["path"]),
+  fn("find_files", "Search the user's Desktop, Documents and Downloads folders for files whose name contains a query.", {
+    query: { type: "string", description: "Filename substring to search for" }
+  }, ["query"]),
+  fn("lock_screen", "Lock the user's computer screen immediately.", {}, []),
+  fn("take_screenshot", "Capture the user's screen and save it as a PNG to their Desktop.", {}, []),
+  fn("set_clipboard", "Copy text to the user's clipboard so they can paste it elsewhere.", {
+    text: { type: "string", description: "The text to copy" }
+  }, ["text"]),
+  fn("adjust_volume", "Change the user's system volume by simulating the hardware volume keys.", {
+    direction: { type: "string", enum: ["up", "down", "mute"], description: "up, down, or mute (toggles mute)" },
+    steps: { type: "integer", description: "How many key-presses, roughly 2% each. Default 5. Ignored for mute." }
+  }, ["direction"])
 ];
 
 function fn(name, description, properties, required) {
@@ -2658,6 +2983,65 @@ const IMPL = {
     return { result: { started: true, total_seconds: total, label: lab,
       note: "The timer is running in the browser tab; it stops if the tab is closed." },
       action: { type: "timer", seconds: total, label: lab } };
+  },
+
+  // These four don't do anything here — the server has no route to the
+  // user's own machine. They just hand the request to the browser as a
+  // "device" action; handleTools()/runDeviceAction() there relay it to the
+  // local agent over its own WebSocket and report what actually happened.
+  async open_app({ app }) {
+    const a = String(app || "").trim().slice(0, 40);
+    if (!a) return { result: { error: "no app name given" } };
+    return { result: { queued: true, app: a }, action: { type: "device", command: "open_app", args: { app: a } } };
+  },
+
+  async close_app({ app, force }) {
+    const a = String(app || "").trim().slice(0, 40);
+    if (!a) return { result: { error: "no app name given" } };
+    return { result: { queued: true, app: a }, action: { type: "device", command: "close_app", args: { app: a, force: !!force } } };
+  },
+
+  async open_url({ url }) {
+    const u = String(url || "").trim();
+    if (!/^https?:\/\//i.test(u)) return { result: { error: "url must start with http:// or https://" } };
+    return { result: { queued: true, url: u }, action: { type: "device", command: "open_url", args: { url: u.slice(0, 500) } } };
+  },
+
+  async open_path({ path }) {
+    const p = String(path || "").trim().slice(0, 300);
+    if (!p) return { result: { error: "no path given" } };
+    return { result: { queued: true, path: p }, action: { type: "device", command: "open_path", args: { path: p } } };
+  },
+
+  async find_files({ query }) {
+    const q = String(query || "").trim().slice(0, 100);
+    if (!q) return { result: { error: "no search query given" } };
+    return { result: { queued: true, query: q,
+      note: "Results aren't known yet — they'll show up in the user's results panel. Don't invent filenames." },
+      action: { type: "device", command: "find_files", args: { query: q } } };
+  },
+
+  async lock_screen() {
+    return { result: { queued: true }, action: { type: "device", command: "lock_screen", args: {} } };
+  },
+
+  async take_screenshot() {
+    return { result: { queued: true, note: "Saved to the user's Desktop once it completes." },
+      action: { type: "device", command: "screenshot", args: {} } };
+  },
+
+  async set_clipboard({ text }) {
+    const t = String(text == null ? "" : text).slice(0, 5000);
+    if (!t) return { result: { error: "no text given" } };
+    return { result: { queued: true }, action: { type: "device", command: "set_clipboard", args: { text: t } } };
+  },
+
+  async adjust_volume({ direction, steps }) {
+    const d = String(direction || "").toLowerCase();
+    if (!["up", "down", "mute"].includes(d)) return { result: { error: "direction must be up, down, or mute" } };
+    const n = Math.max(1, Math.min(20, parseInt(steps, 10) || 5));
+    return { result: { queued: true, direction: d, steps: n },
+      action: { type: "device", command: "adjust_volume", args: { direction: d, steps: n } } };
   }
 };
 
@@ -2768,8 +3152,13 @@ module.exports = async (req, res) => {
 
   // the page's language setting: "ko"/"en" pins the reply language, "auto" follows the user
   const langLine = body.lang === "ko" ? "\nReply in Korean." : body.lang === "en" ? "\nReply in English." : "";
-  const system = SYSTEM + "\n" + clockLine(body.tz) + langLine;
+  const localAgentOn = !!body.localAgent;
+  const localAgentLine = "\n" + (localAgentOn
+    ? "LOCAL AGENT: connected right now. open_app/open_url/open_path/find_files really run on the user's computer."
+    : "LOCAL AGENT: not connected. Don't offer or call open_app/open_url/open_path/find_files — tell the user to connect it first if they ask for this.");
+  const system = SYSTEM + "\n" + clockLine(body.tz) + langLine + localAgentLine;
   const messages = [{ role: "system", content: system }, ...history];
+  const activeTools = localAgentOn ? TOOLS.concat(DEVICE_TOOLS) : TOOLS;
   const cards = [];
   const actions = [];
   const toolsUsed = [];
@@ -2800,7 +3189,7 @@ module.exports = async (req, res) => {
     for (let round = 0; round <= MAX_ROUNDS; round++) {
       const lastRound = round === MAX_ROUNDS;
       const payload = { temperature: retried ? 0.1 : 0.4, messages };
-      if (!lastRound) { payload.tools = TOOLS; payload.tool_choice = "auto"; }
+      if (!lastRound) { payload.tools = activeTools; payload.tool_choice = "auto"; }
 
       const r = await groq(KEY, payload);
       if (!r.ok) {
@@ -2963,19 +3352,23 @@ module.exports = async (req, res) => {
 
 ### `README.md`
 
-<!-- FILE: README.md sha256=66dd36009b772c047d936dd5bdeb9c2fa75e9d7d122df236298bc6a715478fa1 -->
+<!-- FILE: README.md sha256=7c71cb30f6142fb846a4d96892d330004240f89e88bde53e18059f85fb1085b6 -->
 ````markdown
-# Jarvis Core · Voice (Vercel)
+# Jarvischan Core · Voice (Vercel)
 
 A voice-driven "Jarvis" command center you can deploy to a public URL.
 Speak to it, it replies out loud, shows live weather + search-style result
 cards, and runs a real LLM brain — all for **$0** using Groq's free tier.
 A shared **password** gates it so strangers can't burn your free quota.
 
-- **Voice in / out + clap-to-wake** — works smoothly once deployed to https
-  (browser remembers the mic permission after one Allow).
+- **Voice in / out + clap-to-wake + wake-word** — say "Jarvischan" / "자비스찬"
+  to start listening hands-free, or clap twice, or just tap the mic. Works
+  smoothly once deployed to https (browser remembers the mic permission
+  after one Allow).
 - **Brain** — Groq (free, fast open models). The key stays server-side.
 - **Weather** — live via open-meteo (no key).
+- **Control your own computer** — an optional local agent (see §5 below) lets
+  it open apps, URLs and files, take screenshots, adjust volume, etc.
 - Not included: your personal Calendar/Gmail/Notion connectors (those only
   work inside the claude.ai artifact version).
 
@@ -3020,7 +3413,18 @@ After adding them, **redeploy** (Deployments → ⋯ → Redeploy) so the functi
 - The brain calls real tools on the server (`api/chat.js` → `IMPL`): Open-Meteo
   weather + air quality, Frankfurter (ECB) currency, Wikipedia, Nager.Date
   holidays, Hacker News, and a browser timer. None of them need a key.
-- Toggle **Clap ×2 to wake** to start listening by clapping twice.
+- Toggle **Clap ×2 to wake** to start listening by clapping twice, or
+  **Say "Jarvischan" to wake** for hands-free voice activation.
+
+## 5. Optional: let it control your own computer (local agent)
+
+The tools above all run on Vercel's servers, which can only reach the public
+internet — they have no way to open an app on *your* computer. For that,
+there's a separate small program you run locally: see
+[`../local-agent/README.md`](../local-agent/README.md). Once it's running and
+paired (one click, one pasted token), you can say things like "open Chrome",
+"take a screenshot", or "lock my screen" and it actually happens on your
+machine. Windows only for now.
 
 ## Notes
 - **Cost:** Vercel Hobby = free, Groq free tier = free. No billing attached.

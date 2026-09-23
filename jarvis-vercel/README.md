@@ -1,14 +1,18 @@
-# Jarvis Core · Voice (Vercel)
+# Jarvischan Core · Voice (Vercel)
 
 A voice-driven "Jarvis" command center you can deploy to a public URL.
 Speak to it, it replies out loud, shows live weather + search-style result
 cards, and runs a real LLM brain — all for **$0** using Groq's free tier.
 A shared **password** gates it so strangers can't burn your free quota.
 
-- **Voice in / out + clap-to-wake** — works smoothly once deployed to https
-  (browser remembers the mic permission after one Allow).
+- **Voice in / out + clap-to-wake + wake-word** — say "Jarvischan" / "자비스찬"
+  to start listening hands-free, or clap twice, or just tap the mic. Works
+  smoothly once deployed to https (browser remembers the mic permission
+  after one Allow).
 - **Brain** — Groq (free, fast open models). The key stays server-side.
 - **Weather** — live via open-meteo (no key).
+- **Control your own computer** — an optional local agent (see §5 below) lets
+  it open apps, URLs and files, take screenshots, adjust volume, etc.
 - Not included: your personal Calendar/Gmail/Notion connectors (those only
   work inside the claude.ai artifact version).
 
@@ -53,7 +57,18 @@ After adding them, **redeploy** (Deployments → ⋯ → Redeploy) so the functi
 - The brain calls real tools on the server (`api/chat.js` → `IMPL`): Open-Meteo
   weather + air quality, Frankfurter (ECB) currency, Wikipedia, Nager.Date
   holidays, Hacker News, and a browser timer. None of them need a key.
-- Toggle **Clap ×2 to wake** to start listening by clapping twice.
+- Toggle **Clap ×2 to wake** to start listening by clapping twice, or
+  **Say "Jarvischan" to wake** for hands-free voice activation.
+
+## 5. Optional: let it control your own computer (local agent)
+
+The tools above all run on Vercel's servers, which can only reach the public
+internet — they have no way to open an app on *your* computer. For that,
+there's a separate small program you run locally: see
+[`../local-agent/README.md`](../local-agent/README.md). Once it's running and
+paired (one click, one pasted token), you can say things like "open Chrome",
+"take a screenshot", or "lock my screen" and it actually happens on your
+machine. Windows only for now.
 
 ## Notes
 - **Cost:** Vercel Hobby = free, Groq free tier = free. No billing attached.
