@@ -1960,7 +1960,7 @@
      ========================================================== */
   const laBtn=$("localagent"), laLbl=laBtn.querySelector(".lalbl");
   const LA_URL="ws://localhost:8765";
-  let laOn=false, laWS=null, laConnected=false, laPending=new Map(), laSeq=0;
+  let laOn=false, laWS=null, laConnected=false, laPending=new Map(), laSeq=0, laReconnectTimer=0;
   let laToken=""; try{ laToken=localStorage.getItem("jarvis_agent_token")||""; }catch(e){}
 
   function setLocalAgentUI(){
@@ -2011,13 +2011,23 @@
     laWS.onerror=()=>{};
     laWS.onclose=()=>{
       laConnected=false; laWS=null; setLocalAgentUI();
-      if(laOn) log("local agent <span class='rt'>disconnected — is it still running?</span>");
+      // laOn is only still true here for an *unexpected* drop (agent
+      // restarted, laptop woke from sleep, brief network blip) — a
+      // deliberate turn-off or a bad-token reset both already set it false
+      // before closing. Keep retrying quietly in the background instead of
+      // making the user notice and click the button again every time.
+      if(laOn){
+        log("local agent <span class='rt'>disconnected — retrying…</span>");
+        clearTimeout(laReconnectTimer);
+        laReconnectTimer=setTimeout(()=>{ if(laOn && !laConnected) connectLocalAgent(); }, 5000);
+      }
     };
     setLocalAgentUI();
   }
   laBtn.addEventListener("click", ()=>{
     if(laOn){
       laOn=false; laConnected=false;
+      clearTimeout(laReconnectTimer);
       if(laWS){ try{ laWS.close(); }catch(e){} laWS=null; }
       setLocalAgentUI();
       log("local agent <span class='rt'>off</span>");
@@ -2026,6 +2036,10 @@
     laOn=true; setLocalAgentUI();
     connectLocalAgent();
   });
+  // Reconnect automatically on page load if we already have a saved token
+  // from a previous successful pairing — otherwise "hands-free" still meant
+  // clicking a button and nothing else every single time the page opened.
+  if(laToken){ laOn=true; setLocalAgentUI(); connectLocalAgent(); }
 
   /* ==========================================================
      CONNECTION STATUS

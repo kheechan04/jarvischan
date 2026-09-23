@@ -79,8 +79,9 @@ const DEVICE_TOOLS = [
   fn("open_app", "Open an application on the user's computer by name.", {
     app: { type: "string", description: "Friendly app name from the user's allow-list, e.g. chrome, notepad, calculator, explorer, vscode, spotify" }
   }, ["app"]),
-  fn("close_app", "Close/quit an application on the user's computer by name. Refuses explorer (the Windows desktop shell) and anything not in the allow-list.", {
-    app: { type: "string", description: "Friendly app name, same set as open_app" }
+  fn("close_app", "Close/quit an application on the user's computer by name. Tries a normal close first, which lets the app prompt to save unsaved changes — set force only if the user explicitly says to force/kill it, since that skips any save prompt. Refuses explorer (the Windows desktop shell) and anything not in the allow-list.", {
+    app: { type: "string", description: "Friendly app name, same set as open_app" },
+    force: { type: "boolean", description: "true only if the user explicitly asked to force-close/kill it. Default false." }
   }, ["app"]),
   fn("open_url", "Open a URL in the default browser on the user's computer.", {
     url: { type: "string", description: "Full URL starting with http:// or https://" }
@@ -293,10 +294,10 @@ const IMPL = {
     return { result: { queued: true, app: a }, action: { type: "device", command: "open_app", args: { app: a } } };
   },
 
-  async close_app({ app }) {
+  async close_app({ app, force }) {
     const a = String(app || "").trim().slice(0, 40);
     if (!a) return { result: { error: "no app name given" } };
-    return { result: { queued: true, app: a }, action: { type: "device", command: "close_app", args: { app: a } } };
+    return { result: { queued: true, app: a }, action: { type: "device", command: "close_app", args: { app: a, force: !!force } } };
   },
 
   async open_url({ url }) {

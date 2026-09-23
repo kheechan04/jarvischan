@@ -78,20 +78,46 @@ async function openApp(name) {
 // explorer.exe is the Windows desktop shell itself (taskbar, desktop icons),
 // not just a file-browser window, so "closing" it takes down the whole shell.
 const CLOSE_BLOCKLIST = new Set(["explorer", "file explorer", "탐색기"]);
-async function closeApp(name) {
+
+function isProcessRunning(proc) {
+  return new Promise((resolve) => {
+    exec('tasklist /FI "IMAGENAME eq ' + proc + '"', (err, stdout) => {
+      resolve(!err && new RegExp(proc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(stdout || ""));
+    });
+  });
+}
+function taskkill(proc, force) {
+  return new Promise((resolve) => {
+    exec('taskkill /IM "' + proc + '"' + (force ? " /F" : ""), () => resolve());
+  });
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function closeApp(name, force) {
   const apps = loadApps();
   const key = String(name || "").toLowerCase().trim();
   if (CLOSE_BLOCKLIST.has(key)) return { ok: false, error: "won't close " + name + " — that's the Windows desktop shell" };
   const entry = apps[key];
   const proc = entry && entry.process;
   if (!proc) return { ok: false, error: "no process name configured for " + name + " (edit apps.json to add one)" };
-  return new Promise((resolve) => {
-    exec('taskkill /IM "' + proc + '" /F', (err, stdout, stderr) => {
-      if (err && /not found/i.test(String(stderr || ""))) resolve({ ok: true, message: name + " wasn't running" });
-      else if (err) resolve({ ok: false, error: "failed to close " + name });
-      else resolve({ ok: true, message: "closed " + name });
-    });
-  });
+  if (!(await isProcessRunning(proc))) return { ok: true, message: name + " wasn't running" };
+
+  if (force) {
+    await taskkill(proc, true);
+    return (await isProcessRunning(proc))
+      ? { ok: false, error: "failed to force-close " + name }
+      : { ok: true, message: "force-closed " + name };
+  }
+
+  // Graceful close first: no /F sends a normal close request (WM_CLOSE), so
+  // an app with unsaved changes gets to show its own "save changes?" prompt
+  // instead of losing them outright. Only report success once the process
+  // has actually gone — taskkill returning isn't proof it closed, since the
+  // app may just be sitting on that save prompt.
+  await taskkill(proc, false);
+  await sleep(1500);
+  if (!(await isProcessRunning(proc))) return { ok: true, message: "closed " + name };
+  return { ok: false, error: name + " didn't close — it may be waiting on an unsaved-changes prompt. Check it, or ask to force-close it." };
 }
 
 async function openUrl(url) {
@@ -176,7 +202,16 @@ async function screenshot() {
   const out = path.join(dir, file);
   const script = [
     "Add-Type -AssemblyName System.Windows.Forms,System.Drawing",
-    "$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds",
+    // PowerShell isn't marked DPI-aware by default, so without this,
+    // Windows hands .NET a scaled-down "logical" resolution instead of the
+    // real one on any display running above 100% scaling (the default on
+    // most laptops) — the capture below would then only cover the
+    // top-left fraction of the actual screen instead of all of it.
+    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class JarvisDpi { [DllImport(\"user32.dll\")] public static extern bool SetProcessDPIAware(); }'",
+    "[JarvisDpi]::SetProcessDPIAware() | Out-Null",
+    // VirtualScreen (not PrimaryScreen.Bounds) so a multi-monitor setup
+    // gets the full combined desktop, not just the primary display.
+    "$b = [System.Windows.Forms.SystemInformation]::VirtualScreen",
     "$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height",
     "$g = [System.Drawing.Graphics]::FromImage($bmp)",
     "$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)",
@@ -230,7 +265,7 @@ async function runCommand(command, args) {
   try {
     switch (command) {
       case "open_app": return await openApp(args.app);
-      case "close_app": return await closeApp(args.app);
+      case "close_app": return await closeApp(args.app, !!args.force);
       case "open_url": return await openUrl(args.url);
       case "open_path": return await openPath(args.path);
       case "find_files": return await findFiles(args.query);
