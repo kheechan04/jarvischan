@@ -30,7 +30,7 @@ const SYSTEM = [
   "- general conversation, brainstorming and answering from your own knowledge",
   "- understanding and answering in Korean or English, by voice or text",
   "",
-  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, files, long-term memory (you forget everything when the page reloads), or acting on other apps.",
+  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (opening apps/URLs/files, searching for files) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
   "Never claim you did, queued, drafted, scheduled or saved something unless a tool result confirms it. If asked for something you cannot do, say so plainly in one sentence and offer the closest thing you can do.",
   "When asked what you can do, name three or four of the real abilities above in one or two sentences — never invent others.",
   "Use tool results as the only source for live facts. If a tool returns an error, say what failed in plain words.",
@@ -70,6 +70,24 @@ const TOOLS = [
     seconds: { type: "integer", description: "Extra seconds. Default 0." },
     label: { type: "string", description: "Short label, e.g. focus, tea" }
   }, ["minutes"])
+];
+
+// Only offered when the browser reports its local agent is connected (see
+// module.exports below) — these dispatch to that agent and run for real on
+// the user's own computer, they don't execute here on the server.
+const DEVICE_TOOLS = [
+  fn("open_app", "Open an application on the user's computer by name.", {
+    app: { type: "string", description: "Friendly app name from the user's allow-list, e.g. chrome, notepad, calculator, explorer, vscode, spotify" }
+  }, ["app"]),
+  fn("open_url", "Open a URL in the default browser on the user's computer.", {
+    url: { type: "string", description: "Full URL starting with http:// or https://" }
+  }, ["url"]),
+  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer).", {
+    path: { type: "string", description: "Absolute path, e.g. C:\\Users\\me\\Desktop or C:\\Users\\me\\Documents\\report.docx" }
+  }, ["path"]),
+  fn("find_files", "Search the user's Desktop, Documents and Downloads folders for files whose name contains a query.", {
+    query: { type: "string", description: "Filename substring to search for" }
+  }, ["query"])
 ];
 
 function fn(name, description, properties, required) {
@@ -251,6 +269,36 @@ const IMPL = {
     return { result: { started: true, total_seconds: total, label: lab,
       note: "The timer is running in the browser tab; it stops if the tab is closed." },
       action: { type: "timer", seconds: total, label: lab } };
+  },
+
+  // These four don't do anything here — the server has no route to the
+  // user's own machine. They just hand the request to the browser as a
+  // "device" action; handleTools()/runDeviceAction() there relay it to the
+  // local agent over its own WebSocket and report what actually happened.
+  async open_app({ app }) {
+    const a = String(app || "").trim().slice(0, 40);
+    if (!a) return { result: { error: "no app name given" } };
+    return { result: { queued: true, app: a }, action: { type: "device", command: "open_app", args: { app: a } } };
+  },
+
+  async open_url({ url }) {
+    const u = String(url || "").trim();
+    if (!/^https?:\/\//i.test(u)) return { result: { error: "url must start with http:// or https://" } };
+    return { result: { queued: true, url: u }, action: { type: "device", command: "open_url", args: { url: u.slice(0, 500) } } };
+  },
+
+  async open_path({ path }) {
+    const p = String(path || "").trim().slice(0, 300);
+    if (!p) return { result: { error: "no path given" } };
+    return { result: { queued: true, path: p }, action: { type: "device", command: "open_path", args: { path: p } } };
+  },
+
+  async find_files({ query }) {
+    const q = String(query || "").trim().slice(0, 100);
+    if (!q) return { result: { error: "no search query given" } };
+    return { result: { queued: true, query: q,
+      note: "Results aren't known yet — they'll show up in the user's results panel. Don't invent filenames." },
+      action: { type: "device", command: "find_files", args: { query: q } } };
   }
 };
 
@@ -361,8 +409,13 @@ module.exports = async (req, res) => {
 
   // the page's language setting: "ko"/"en" pins the reply language, "auto" follows the user
   const langLine = body.lang === "ko" ? "\nReply in Korean." : body.lang === "en" ? "\nReply in English." : "";
-  const system = SYSTEM + "\n" + clockLine(body.tz) + langLine;
+  const localAgentOn = !!body.localAgent;
+  const localAgentLine = "\n" + (localAgentOn
+    ? "LOCAL AGENT: connected right now. open_app/open_url/open_path/find_files really run on the user's computer."
+    : "LOCAL AGENT: not connected. Don't offer or call open_app/open_url/open_path/find_files — tell the user to connect it first if they ask for this.");
+  const system = SYSTEM + "\n" + clockLine(body.tz) + langLine + localAgentLine;
   const messages = [{ role: "system", content: system }, ...history];
+  const activeTools = localAgentOn ? TOOLS.concat(DEVICE_TOOLS) : TOOLS;
   const cards = [];
   const actions = [];
   const toolsUsed = [];
@@ -393,7 +446,7 @@ module.exports = async (req, res) => {
     for (let round = 0; round <= MAX_ROUNDS; round++) {
       const lastRound = round === MAX_ROUNDS;
       const payload = { temperature: retried ? 0.1 : 0.4, messages };
-      if (!lastRound) { payload.tools = TOOLS; payload.tool_choice = "auto"; }
+      if (!lastRound) { payload.tools = activeTools; payload.tool_choice = "auto"; }
 
       const r = await groq(KEY, payload);
       if (!r.ok) {

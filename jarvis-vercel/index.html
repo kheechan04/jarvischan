@@ -366,6 +366,10 @@
         <span class="cdot" aria-hidden="true"></span>
         <span class="wwlbl">Say "Jarvischan" to wake · off</span>
       </button>
+      <button class="wake-toggle" id="localagent" aria-pressed="false" title="Connect to the local agent so Jarvischan can open apps/files on this computer">
+        <span class="cdot" aria-hidden="true"></span>
+        <span class="lalbl">Local agent · off</span>
+      </button>
       <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="English voice"></select></label>
       <label class="voice-sel"><span>Lang</span><select id="langSel" aria-label="Language">
         <option value="auto">Auto</option><option value="ko">한국어</option><option value="en">English</option></select></label>
@@ -1265,7 +1269,7 @@
   async function postChat(messages){
     const r=await fetch("/api/chat",{
       method:"POST", headers:{"content-type":"application/json"},
-      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref})
+      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref, localAgent:laConnected})
     });
     if(r.status===401){ authed=false; const e=new Error("bad password"); e.code=401; throw e; }
     if(r.status===429){ const e=new Error("busy"); e.code=429; throw e; }
@@ -1439,9 +1443,35 @@
       const items=[].concat(...groups.map(g=>g.items||[]));
       showResults(groups.map(g=>g.title).join(" + "), items);
     }
-    (out.actions||[]).forEach(a=>{ if(a && a.type==="timer" && a.seconds>0) startTimer(a.seconds, a.label); });
+    (out.actions||[]).forEach(a=>{
+      if(a && a.type==="timer" && a.seconds>0) startTimer(a.seconds, a.label);
+      if(a && a.type==="device") runDeviceAction(a.command, a.args||{});
+    });
     if(out.tools && out.tools.length)
       log('tools → <span class="rt">'+out.tools.join(", ").replace(/[<>&]/g,"")+"</span>");
+  }
+
+  // Relays a device action (open_app/open_url/open_path/find_files) to the
+  // local agent and shows what actually happened — the spoken reply was
+  // already generated before this runs (the server can't know the real
+  // outcome, only that it dispatched the request), so this is the only place
+  // that reports the true result back to the user.
+  async function runDeviceAction(command, args){
+    log('device → <span class="rt">'+String(command).replace(/[<>&]/g,"")+"</span> "+
+      JSON.stringify(args).replace(/[<>&]/g,"").slice(0,120));
+    const r=await localAgentSend(command, args);
+    if(!r.ok){
+      log('device <span style="color:var(--crit)">'+trim(r.error||"failed",80).replace(/[<>&]/g,"")+"</span>");
+      banner.textContent = lastLang==="ko"
+        ? "로컬 에이전트 명령 실패: "+(r.error||"알 수 없는 오류")
+        : "Local agent action failed: "+(r.error||"unknown error");
+      return;
+    }
+    log('device <span class="ok">'+trim(r.message||"done",80).replace(/[<>&]/g,"")+"</span>");
+    if(command==="find_files" && Array.isArray(r.results)){
+      showResults(lastLang==="ko"?"파일 검색 · "+args.query:"file search · "+args.query,
+        r.results.map(p=>({title:p.split(/[\\\/]/).pop(), desc:p})));
+    }
   }
 
   // spokenLang: what Whisper detected ("ko"/"en"), if the input came from voice
@@ -1911,6 +1941,82 @@
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
+  });
+
+  /* ==========================================================
+     LOCAL AGENT — a small companion program the user runs on this
+     computer (separate from this web page) that Jarvischan talks to
+     over a plain WebSocket to open apps, URLs, files/folders, and
+     search for files. The Vercel server can't do any of this itself —
+     it's a stateless cloud function with no route to the user's own
+     machine — so the browser connects straight to ws://localhost and
+     the LLM's tool calls get relayed here instead of running server-side
+     (see askBrain/handleTools below for the "device" action type).
+
+     A pairing token (printed once by the agent on first run, pasted into
+     this page and kept in localStorage) stops any other page or process
+     from issuing commands to it — this is a personal single-user tool,
+     not a hardened multi-tenant service.
+     ========================================================== */
+  const laBtn=$("localagent"), laLbl=laBtn.querySelector(".lalbl");
+  const LA_URL="ws://localhost:8765";
+  let laOn=false, laWS=null, laConnected=false, laPending=new Map(), laSeq=0;
+  let laToken=""; try{ laToken=localStorage.getItem("jarvis_agent_token")||""; }catch(e){}
+
+  function setLocalAgentUI(){
+    laBtn.setAttribute("aria-pressed", laConnected?"true":"false");
+    laLbl.textContent = laConnected ? "Local agent · connected" : (laOn ? "Local agent · connecting…" : "Local agent · off");
+  }
+  function localAgentSend(command, args){
+    return new Promise((resolve)=>{
+      if(!laConnected || !laWS){ resolve({ok:false, error:"local agent not connected"}); return; }
+      const id="c"+(++laSeq);
+      laPending.set(id, resolve);
+      // If the agent never answers (app hung, action stalled), don't leave
+      // the caller hanging forever — resolve with a timeout error instead.
+      setTimeout(()=>{ if(laPending.has(id)){ laPending.delete(id); resolve({ok:false, error:"timed out"}); } }, 8000);
+      try{ laWS.send(JSON.stringify({type:"cmd", id, command, args})); }
+      catch(e){ laPending.delete(id); resolve({ok:false, error:"send failed"}); }
+    });
+  }
+  function connectLocalAgent(){
+    if(!laToken){
+      laToken=(prompt("Paste the pairing token shown by the local agent (printed once when you run it with npm start):")||"").trim();
+      if(!laToken) return;
+      try{ localStorage.setItem("jarvis_agent_token", laToken); }catch(e){}
+    }
+    try{ laWS=new WebSocket(LA_URL); }catch(e){ log("local agent <span style='color:var(--crit)'>can't connect</span>"); return; }
+    laWS.onopen=()=>{ try{ laWS.send(JSON.stringify({type:"auth", token:laToken})); }catch(e){} };
+    laWS.onmessage=(ev)=>{
+      let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
+      if(msg.type==="auth"){
+        laConnected=!!msg.ok; setLocalAgentUI();
+        log(laConnected ? "local agent <span class='ok'>paired</span>"
+          : "local agent <span style='color:var(--crit)'>bad token — click again to re-enter it</span>");
+        if(!laConnected){ try{ localStorage.removeItem("jarvis_agent_token"); }catch(e){} laToken=""; }
+        return;
+      }
+      if(msg.type==="result" && laPending.has(msg.id)){
+        laPending.get(msg.id)(msg); laPending.delete(msg.id);
+      }
+    };
+    laWS.onerror=()=>{};
+    laWS.onclose=()=>{
+      laConnected=false; laWS=null; setLocalAgentUI();
+      if(laOn) log("local agent <span class='rt'>disconnected — is it still running?</span>");
+    };
+    setLocalAgentUI();
+  }
+  laBtn.addEventListener("click", ()=>{
+    if(laOn){
+      laOn=false; laConnected=false;
+      if(laWS){ try{ laWS.close(); }catch(e){} laWS=null; }
+      setLocalAgentUI();
+      log("local agent <span class='rt'>off</span>");
+      return;
+    }
+    laOn=true; setLocalAgentUI();
+    connectLocalAgent();
   });
 
   /* ==========================================================

@@ -1,0 +1,13 @@
+{
+  "name": "jarvischan-local-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local companion for Jarvischan — lets the web app open apps, URLs and files on this computer.",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
