@@ -1503,7 +1503,7 @@
   const micBtn=$("mic"), txt=$("txt"), sendBtn=$("send");
 
   /* ---- voice input via Groq Whisper (/api/transcribe) ----
-     Records one utterance, stops after ~1.2 s of silence (or on a second tap),
+     Records one utterance, stops after ~0.8 s of silence (or on a second tap),
      and lets Whisper tell Korean from English. Works in any browser that can
      record; the browser recognizer is the fallback. */
   const canRecord = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -1574,7 +1574,7 @@
     setMode("listening","Speak now — tap again to stop");
     log("mic <b>open</b> · whisper");
     // voice-activity detection on the analyser level, relative to the room's noise floor.
-    // The floor isn't just a one-time snapshot: every ~1.2s it's re-anchored to the
+    // The floor isn't just a one-time snapshot: every ~0.7s it's re-anchored to the
     // quietest reading seen in that window. Real speech still has brief gaps (between
     // words, breaths) that read near-true-ambient, so this doesn't get fooled by
     // someone talking continuously — but steady background noise (traffic, AC hum),
@@ -1606,9 +1606,9 @@
       // at all — recording sat there waiting long after the person had gone quiet.
       // A window this short still holds up against being fooled by a mid-word gap
       // reading as the new floor, since "heard" only fires on 3 consecutive
-      // above-floor readings and "quiet" needs 1.2s continuous — a lone dip can't
-      // trip either on its own.
-      if(t-winStart>1200){
+      // above-floor readings and "quiet" needs sustained silence — a lone dip
+      // can't trip either on its own.
+      if(t-winStart>700){
         floor=Math.min(0.7, winMin);
         winMin=1; winStart=t;
       }
@@ -1618,7 +1618,12 @@
       }
       else{
         loud=0;
-        if(heard && lv<floor+0.035){ if(!quietSince) quietSince=t; else if(t-quietSince>1200) stopWhisper("vad-quiet"); }
+        // 800ms, down from the original 1.2s: on iOS this quiet timer is the only
+        // stop signal there is (no onspeechend), and the full 1.2s plus the time
+        // for the floor above to converge was landing noticeably behind a
+        // laptop's near-instant browser endpointer. Still long enough to not
+        // trip on a mid-sentence breath.
+        if(heard && lv<floor+0.035){ if(!quietSince) quietSince=t; else if(t-quietSince>800) stopWhisper("vad-quiet"); }
       }
       // Once-a-second raw level readout while debugging — cheap visibility into
       // whether the analyser is seeing any signal at all on a given device,
