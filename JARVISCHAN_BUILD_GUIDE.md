@@ -1,16 +1,16 @@
-# JARVIS Core 빌드 가이드
+# Jarvischan Core 빌드 가이드
 
 음성으로 말하면 대답하고, 실제 도구(날씨·대기질·환율·위키·공휴일·헤드라인·타이머)를 쓰는 영화 스타일 음성 비서를 Vercel에 배포하는 가이드예요. 2026-09-16 기준 배포본(`https://jarvis-vercel-beta.vercel.app`)과 똑같은 결과물을 만들 수 있어요.
 
 이 문서 하나에 명세, 구현 순서, 그동안 겪은 함정, 테스트 방법, 그리고 **파일 원본 전체**(맨 아래 부록)가 들어 있어요.
 
-**이미 배포돼 있는 상태에서 이어서 작업하는 거라면:** `jarvis-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvis`, Private)에도 연결돼 있어요. §5-1 추출 스크립트를 다시 돌릴 필요 없이, 파일을 바로 수정하고 §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포돼요(§5-3b). 수정한 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 방식으로 다시 동기화해서 md와 실제 코드가 항상 같은 내용이게 유지해주세요. 현재 상태 요약은 §8 참고.
+**이미 배포돼 있는 상태에서 이어서 작업하는 거라면:** `jarvischan-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvischan`, Private)에도 연결돼 있어요. §5-1 추출 스크립트를 다시 돌릴 필요 없이, 파일을 바로 수정하고 §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포돼요(§5-3b). 수정한 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 방식으로 다시 동기화해서 md와 실제 코드가 항상 같은 내용이게 유지해주세요. 현재 상태 요약은 §8 참고.
 
 ---
 
 ## Claude Code에게 이렇게 말하세요
 
-> 이 가이드(`JARVIS_BUILD_GUIDE.md`)대로 JARVIS Core를 구현하고 Vercel에 배포해줘. 부록의 파일은 추출 스크립트로 그대로 꺼내고, 검증 단계를 모두 통과한 뒤에 배포해. API 키와 비밀번호는 내가 직접 넣을게.
+> 이 가이드(`JARVISCHAN_BUILD_GUIDE.md`)대로 Jarvischan Core를 구현하고 Vercel에 배포해줘. 부록의 파일은 추출 스크립트로 그대로 꺼내고, 검증 단계를 모두 통과한 뒤에 배포해. API 키와 비밀번호는 내가 직접 넣을게.
 
 ### Claude Code가 지켜야 할 규칙
 
@@ -36,7 +36,7 @@
 ### 파일 구조
 
 ```
-jarvis-vercel/
+jarvischan-vercel/
 ├── index.html      # 화면 전체: HUD 캔버스, 음성, 대화, 결과 카드, 타이머, 테마 (빌드 과정 없음)
 ├── api/chat.js     # Vercel Node 서버 함수: 비밀번호 확인, Groq 도구 호출 루프, 도구 7개 + 로컬 에이전트 도구 8개(§9)
 ├── api/transcribe.js # Vercel Node 서버 함수: 녹음 → Groq Whisper 받아쓰기(한국어·영어 감지)
@@ -291,19 +291,19 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 
 ### 5-1. 파일 꺼내기
 
-이 가이드가 있는 폴더에서 실행해요. `jarvis-vercel/` 폴더가 만들어져요.
+이 가이드가 있는 폴더에서 실행해요. `jarvischan-vercel/` 폴더가 만들어져요.
 
 ```bash
 python3 - <<'EOF'
 import re, pathlib, hashlib
-md = pathlib.Path("JARVIS_BUILD_GUIDE.md").read_text(encoding="utf-8")
+md = pathlib.Path("JARVISCHAN_BUILD_GUIDE.md").read_text(encoding="utf-8")
 # marker must start a line and the path has no spaces, so this script's own text never matches
 files = re.findall(r"(?ms)^<!-- FILE: (\S+) sha256=([0-9a-f]{64}) -->\n````[a-z]*\n(.*?)\n````\n", md)
 assert len(files) == 6, f"expected 6 files, found {len(files)}"
 for path, digest, body in files:
     data = (body + "\n").encode("utf-8")
     ok = hashlib.sha256(data).hexdigest() == digest
-    p = pathlib.Path("jarvis-vercel") / path
+    p = pathlib.Path("jarvischan-vercel") / path
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(data)
     print(("OK  " if ok else "BAD ") + str(p))
@@ -314,7 +314,7 @@ EOF
 ### 5-2. 로컬 검증 (배포 전 필수)
 
 ```bash
-cd jarvis-vercel
+cd jarvischan-vercel
 node --check api/chat.js
 node --check api/transcribe.js
 python3 -c 'import re,subprocess,tempfile;h=open("index.html").read();f=tempfile.NamedTemporaryFile("w",suffix=".js",delete=False);f.write("\n".join(re.findall(r"<script>(.*?)</script>",h,re.S)));f.close();r=subprocess.run(["node","--check",f.name]);print("page script OK" if r.returncode==0 else "page script FAIL")'
@@ -341,15 +341,15 @@ const {IMPL}=require("./api/chat.js");
 
 ```bash
 vercel whoami                                  # 로그인 확인
-vercel deploy --prod --yes --name jarvis-vercel
+vercel deploy --prod --yes --name jarvischan-vercel
 ```
 
 ### 5-3b. GitHub 연동 & 자동 배포 (2026-09-22에 설정 완료)
 
 현재 이 프로젝트는 GitHub과 연결돼 있어서, **`git push`만 해도 Vercel이 알아서 재배포**해요. `vercel deploy --prod --yes`는 여전히 되지만 이제 굳이 안 써도 됨.
 
-- 저장소: `https://github.com/kheechan04/jarvis` (Private), 소유자 `kheechan04`
-- Vercel 프로젝트 `khchan04/jarvis-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvis-vercel`**로 지정돼 있음(저장소 루트엔 가이드 md도 같이 있어서 이게 꼭 필요함)
+- 저장소: `https://github.com/kheechan04/jarvischan` (Private), 소유자 `kheechan04`
+- Vercel 프로젝트 `khchan04/jarvischan-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvischan-vercel`**로 지정돼 있음(저장소 루트엔 가이드 md도 같이 있어서 이게 꼭 필요함)
 - 새로 Claude Code 세션을 열어서 이어서 작업할 때: 코드 수정 → `git add` → `git commit` → `git push` 하면 끝. 수동으로 `vercel deploy` 안 해도 자동으로 뜸(보통 10초 안팎)
 - 배포 확인은 `vercel ls`로 상태(`● Ready`) 보거나, `curl`로 `https://jarvis-vercel-blush.vercel.app/` 직접 확인
 
@@ -502,6 +502,15 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 **확인이 남은 것:** 없음 — 이번 라운드는 전부 실기기(아이패드) 로그로 원인을 확인하고, 로컬 에이전트도 실제 명령을 실행해 결과를 확인한 뒤 배포함.
 
+
+### 업데이트 (2026-09-25) — 이름 정리 (jarvis → jarvischan)
+
+앱 이름은 이미 Jarvischan이었는데 저장소·프로젝트·폴더 이름에 옛 이름이 남아 있어서 한꺼번에 맞춤.
+- GitHub 저장소 `kheechan04/jarvis` → **`kheechan04/jarvischan`** (옛 주소는 GitHub이 자동으로 넘겨줌)
+- Vercel 프로젝트 `jarvis-vercel` → **`jarvischan-vercel`**, 폴더도 `jarvischan-vercel/`로 바꾸고 Vercel의 **Root Directory도 `jarvischan-vercel`**로 변경. 배포 주소 `https://jarvis-vercel-blush.vercel.app`은 그대로(로컬 에이전트의 Origin 허용 목록도 이 주소라 안 바꿈)
+- 이 가이드 파일 이름 `JARVIS_BUILD_GUIDE.md` → `JARVISCHAN_BUILD_GUIDE.md`, `package.json` 이름·README 문구·User-Agent·Whisper 힌트 문구·스크린샷 파일명도 jarvischan으로
+- **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
+
 ---
 
 ## 9. 로컬 에이전트 — 노트북 앱 제어
@@ -562,11 +571,11 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 91,103 bytes | `2f1508a41f947080…` |
-| `api/chat.js` | 25,316 bytes | `0b93413f22d798ba…` |
-| `api/transcribe.js` | 5,163 bytes | `c107dc29430268a8…` |
-| `package.json` | 162 bytes | `6b7fad3c4dce8a46…` |
-| `README.md` | 3,286 bytes | `66dd36009b772c04…` |
+| `index.html` | 104,156 bytes | `9af41f620a06b4de…` |
+| `api/chat.js` | 31,349 bytes | `1e43a828cfafa7d7…` |
+| `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
+| `package.json` | 170 bytes | `36031ccc383c75bf…` |
+| `README.md` | 4,167 bytes | `ecfa5da64a07781d…` |
 | `.env.example` | 291 bytes | `4dca9d87e66b0f3d…` |
 
 ### `index.html`
@@ -2697,7 +2706,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=2ea0506f8b45334073c7ab2937b89b11a65992857a0c4817a447e7aa2a8c9bdd -->
+<!-- FILE: api/chat.js sha256=1e43a828cfafa7d7f50a96dd9e72af1eae7d4c3d5a71e520cd25513f9548a5cb -->
 ````js
 // Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
@@ -2740,7 +2749,7 @@ const SYSTEM = [
   'FORMAT: on the FIRST line output exactly "ROUTE: <AgentName>" choosing one of Strategist, Researcher, Chief of Staff, Finance, Editor, Memory, Design, Engineering, Calendar, Email, Social, Ops, Marketing, Sales, Developer (or "ROUTE: none"). This only lights a node on screen. Then a blank line, then the spoken reply.'
 ].join("\n");
 
-const UA = "jarvis-core/1.0 (personal voice assistant on Vercel)";
+const UA = "jarvischan-core/1.0 (personal voice assistant on Vercel)";
 const MAX_ROUNDS = 3;
 
 /* ---------------- tool definitions (sent to Groq) ---------------- */
@@ -3237,7 +3246,7 @@ module.exports.IMPL = IMPL;
 
 ### `api/transcribe.js`
 
-<!-- FILE: api/transcribe.js sha256=c107dc29430268a8514a33e011dba5c75dbdca4843ec07a5ae53ef4d2a44c7e9 -->
+<!-- FILE: api/transcribe.js sha256=e035dfdf9da9a24b7ed881ad5df4d9161d1866916c8f299543aa058dc0570cce -->
 ````js
 // Vercel serverless function — speech to text via Groq Whisper.
 // The browser records one short utterance and POSTs the raw audio here;
@@ -3310,7 +3319,7 @@ module.exports = async (req, res) => {
     fd.append("temperature", "0");
     if (lang) {
       fd.append("language", lang);
-      fd.append("prompt", lang === "ko" ? "자비스에게 하는 짧은 음성 명령." : "A short voice command to Jarvis.");
+      fd.append("prompt", lang === "ko" ? "자비스찬에게 하는 짧은 음성 명령." : "A short voice command to Jarvischan.");
     }
     let r;
     try {
@@ -3340,23 +3349,23 @@ module.exports = async (req, res) => {
 
 ### `package.json`
 
-<!-- FILE: package.json sha256=6b7fad3c4dce8a46f9add43707adac4de04410e0ddf0267cb33283b3a698222b -->
+<!-- FILE: package.json sha256=36031ccc383c75bf345c63e6fc69e4c9fdc0a8f92f22f2fccefc311c830cde76 -->
 ````json
 {
-  "name": "jarvis-voice",
+  "name": "jarvischan-voice",
   "version": "1.0.0",
   "private": true,
-  "description": "Jarvis voice command center — static page + Groq brain proxy (Vercel)"
+  "description": "Jarvischan voice command center — static page + Groq brain proxy (Vercel)"
 }
 ````
 
 ### `README.md`
 
-<!-- FILE: README.md sha256=7c71cb30f6142fb846a4d96892d330004240f89e88bde53e18059f85fb1085b6 -->
+<!-- FILE: README.md sha256=ecfa5da64a07781d13d11093426e8421c4ab8ff391c9465fb34b888daf4a7a55 -->
 ````markdown
 # Jarvischan Core · Voice (Vercel)
 
-A voice-driven "Jarvis" command center you can deploy to a public URL.
+A voice-driven "Jarvischan" command center you can deploy to a public URL.
 Speak to it, it replies out loud, shows live weather + search-style result
 cards, and runs a real LLM brain — all for **$0** using Groq's free tier.
 A shared **password** gates it so strangers can't burn your free quota.
@@ -3386,7 +3395,7 @@ A shared **password** gates it so strangers can't burn your free quota.
 **Option B — CLI**
 ```bash
 npm i -g vercel
-cd jarvis-vercel
+cd jarvischan-vercel
 vercel        # follow prompts
 vercel --prod # deploy to production
 ```
@@ -3404,7 +3413,7 @@ After adding them, **redeploy** (Deployments → ⋯ → Redeploy) so the functi
 - Open your `https://<project>.vercel.app` URL.
 - Enter the password once.
 - Tap the mic (allow the microphone once) and speak Korean or English — Groq
-  Whisper detects which, and Jarvis answers in the same language. The **Lang**
+  Whisper detects which, and Jarvischan answers in the same language. The **Lang**
   menu can pin one language.
 - Try: *"what can you do?"*, *"system check"*, *"weather in Busan"*,
   *"is the air bad today?"*, *"100 dollars in won"*, *"who is Sam Altman?"*,

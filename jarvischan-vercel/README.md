@@ -1,6 +1,6 @@
 # Jarvischan Core · Voice (Vercel)
 
-A voice-driven "Jarvis" command center you can deploy to a public URL.
+A voice-driven "Jarvischan" command center you can deploy to a public URL.
 Speak to it, it replies out loud, shows live weather + search-style result
 cards, and runs a real LLM brain — all for **$0** using Groq's free tier.
 A shared **password** gates it so strangers can't burn your free quota.
@@ -30,7 +30,7 @@ A shared **password** gates it so strangers can't burn your free quota.
 **Option B — CLI**
 ```bash
 npm i -g vercel
-cd jarvis-vercel
+cd jarvischan-vercel
 vercel        # follow prompts
 vercel --prod # deploy to production
 ```
@@ -48,7 +48,7 @@ After adding them, **redeploy** (Deployments → ⋯ → Redeploy) so the functi
 - Open your `https://<project>.vercel.app` URL.
 - Enter the password once.
 - Tap the mic (allow the microphone once) and speak Korean or English — Groq
-  Whisper detects which, and Jarvis answers in the same language. The **Lang**
+  Whisper detects which, and Jarvischan answers in the same language. The **Lang**
   menu can pin one language.
 - Try: *"what can you do?"*, *"system check"*, *"weather in Busan"*,
   *"is the air bad today?"*, *"100 dollars in won"*, *"who is Sam Altman?"*,

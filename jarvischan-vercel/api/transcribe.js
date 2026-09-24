@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
     fd.append("temperature", "0");
     if (lang) {
       fd.append("language", lang);
-      fd.append("prompt", lang === "ko" ? "자비스에게 하는 짧은 음성 명령." : "A short voice command to Jarvis.");
+      fd.append("prompt", lang === "ko" ? "자비스찬에게 하는 짧은 음성 명령." : "A short voice command to Jarvischan.");
     }
     let r;
     try {

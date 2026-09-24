@@ -39,7 +39,7 @@ const SYSTEM = [
   'FORMAT: on the FIRST line output exactly "ROUTE: <AgentName>" choosing one of Strategist, Researcher, Chief of Staff, Finance, Editor, Memory, Design, Engineering, Calendar, Email, Social, Ops, Marketing, Sales, Developer (or "ROUTE: none"). This only lights a node on screen. Then a blank line, then the spoken reply.'
 ].join("\n");
 
-const UA = "jarvis-core/1.0 (personal voice assistant on Vercel)";
+const UA = "jarvischan-core/1.0 (personal voice assistant on Vercel)";
 const MAX_ROUNDS = 3;
 
 /* ---------------- tool definitions (sent to Groq) ---------------- */

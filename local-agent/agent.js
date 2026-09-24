@@ -198,7 +198,7 @@ async function lockScreen() {
 
 async function screenshot() {
   const dir = path.join(os.homedir(), "Desktop");
-  const file = "jarvis-screenshot-" + new Date().toISOString().replace(/[:.]/g, "-") + ".png";
+  const file = "jarvischan-screenshot-" + new Date().toISOString().replace(/[:.]/g, "-") + ".png";
   const out = path.join(dir, file);
   const script = [
     "Add-Type -AssemblyName System.Windows.Forms,System.Drawing",
@@ -207,8 +207,8 @@ async function screenshot() {
     // real one on any display running above 100% scaling (the default on
     // most laptops) — the capture below would then only cover the
     // top-left fraction of the actual screen instead of all of it.
-    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class JarvisDpi { [DllImport(\"user32.dll\")] public static extern bool SetProcessDPIAware(); }'",
-    "[JarvisDpi]::SetProcessDPIAware() | Out-Null",
+    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class JarvischanDpi { [DllImport(\"user32.dll\")] public static extern bool SetProcessDPIAware(); }'",
+    "[JarvischanDpi]::SetProcessDPIAware() | Out-Null",
     // VirtualScreen (not PrimaryScreen.Bounds) so a multi-monitor setup
     // gets the full combined desktop, not just the primary display.
     "$b = [System.Windows.Forms.SystemInformation]::VirtualScreen",
@@ -248,11 +248,11 @@ async function adjustVolume(direction, steps) {
   const press = [
     'Add-Type -TypeDefinition \'',
     'using System; using System.Runtime.InteropServices;',
-    'public class JarvisVol { [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo); }',
+    'public class JarvischanVol { [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo); }',
     "'",
     "for ($i=0; $i -lt " + n + "; $i++) {",
-    "  [JarvisVol]::keybd_event(" + vk + ",0,0,[UIntPtr]::Zero)",
-    "  [JarvisVol]::keybd_event(" + vk + ",0,2,[UIntPtr]::Zero)",
+    "  [JarvischanVol]::keybd_event(" + vk + ",0,0,[UIntPtr]::Zero)",
+    "  [JarvischanVol]::keybd_event(" + vk + ",0,2,[UIntPtr]::Zero)",
     "}"
   ].join("\n");
   const r = await runPowerShell(press);
