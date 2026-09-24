@@ -351,7 +351,7 @@ vercel deploy --prod --yes --name jarvischan-vercel
 - 저장소: `https://github.com/kheechan04/jarvischan` (Private), 소유자 `kheechan04`
 - Vercel 프로젝트 `khchan04/jarvischan-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvischan-vercel`**로 지정돼 있음(저장소 루트엔 가이드 md도 같이 있어서 이게 꼭 필요함)
 - 새로 Claude Code 세션을 열어서 이어서 작업할 때: 코드 수정 → `git add` → `git commit` → `git push` 하면 끝. 수동으로 `vercel deploy` 안 해도 자동으로 뜸(보통 10초 안팎)
-- 배포 확인은 `vercel ls`로 상태(`● Ready`) 보거나, `curl`로 `https://jarvis-vercel-blush.vercel.app/` 직접 확인
+- 배포 확인은 `vercel ls`로 상태(`● Ready`) 보거나, `curl`로 `https://jarvischan.vercel.app/` 직접 확인
 
 ⚠️ **처음 연결할 때 겪은 함정** (자세한 원인은 §6 표 참고): Vercel 계정에 GitHub 로그인 연결 필요 → GitHub에 Vercel 앱 설치(저장소 접근 권한) 필요 → Root Directory 설정 필요 → **로컬 git의 커밋 작성자 이메일이 계정과 안 맞으면 배포가 `Deployment Blocked`로 조용히 멈춤**. 이 저장소는 repo-local로 `git config user.email`을 GitHub 계정 연결 noreply 이메일로 맞춰뒀어서(`280937297+kheechan04@users.noreply.github.com`) 정상 작동 중. 다른 컴퓨터에서 이 저장소를 새로 클론해서 커밋하면 이 문제가 재발할 수 있음 — 그럴 땐 이메일부터 확인.
 
@@ -507,7 +507,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 앱 이름은 이미 Jarvischan이었는데 저장소·프로젝트·폴더 이름에 옛 이름이 남아 있어서 한꺼번에 맞춤.
 - GitHub 저장소 `kheechan04/jarvis` → **`kheechan04/jarvischan`** (옛 주소는 GitHub이 자동으로 넘겨줌)
-- Vercel 프로젝트 `jarvis-vercel` → **`jarvischan-vercel`**, 폴더도 `jarvischan-vercel/`로 바꾸고 Vercel의 **Root Directory도 `jarvischan-vercel`**로 변경. 배포 주소 `https://jarvis-vercel-blush.vercel.app`은 그대로(로컬 에이전트의 Origin 허용 목록도 이 주소라 안 바꿈)
+- Vercel 프로젝트 `jarvis-vercel` → **`jarvischan-vercel`**, 폴더도 `jarvischan-vercel/`로 바꾸고 Vercel의 **Root Directory도 `jarvischan-vercel`**로 변경. **배포 주소도 `https://jarvischan.vercel.app`으로 변경** — 프로젝트 도메인에 추가하고, 옛 주소 `https://jarvis-vercel-blush.vercel.app`은 새 주소로 308 리다이렉트. 로컬 에이전트 Origin 허용 목록에 새 주소 추가(옛 주소도 남겨둠). 브라우저 저장값(`localStorage`·`sessionStorage`)은 주소(origin)별이라 새 주소에서 처음 열면 비밀번호·에이전트 토큰을 한 번 다시 입력해야 함
 - 이 가이드 파일 이름 `JARVIS_BUILD_GUIDE.md` → `JARVISCHAN_BUILD_GUIDE.md`, `package.json` 이름·README 문구·User-Agent·Whisper 힌트 문구·스크린샷 파일명도 jarvischan으로
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 

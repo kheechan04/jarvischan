@@ -1,7 +1,7 @@
 # Jarvischan local agent
 
 A small companion program you run on your own computer so the
-[Jarvischan](https://jarvis-vercel-blush.vercel.app) web page can open apps,
+[Jarvischan](https://jarvischan.vercel.app) web page can open apps,
 URLs and files **on that computer**. Jarvischan itself runs on Vercel, which
 is a stateless cloud function with no route to your machine — this agent is
 what makes "open Chrome" / "close Notepad" / "lock my screen" actually work.

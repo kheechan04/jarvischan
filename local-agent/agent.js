@@ -22,7 +22,8 @@ const PORT = Number(process.env.JARVIS_AGENT_PORT) || 8765;
 // The page this agent is allowed to take commands from. Update this if you
 // move to a different Vercel URL or a custom domain.
 const ALLOWED_ORIGINS = new Set([
-  "https://jarvis-vercel-blush.vercel.app",
+  "https://jarvischan.vercel.app",
+  "https://jarvis-vercel-blush.vercel.app", // old address, now redirects
   "http://localhost:3000" // vercel dev
 ]);
 
