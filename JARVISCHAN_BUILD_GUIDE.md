@@ -521,6 +521,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **PWA 설치 확인 완료:** 사용자가 크롬에서 직접 설치해서 `Chrome 앱\Jarvischan`으로 등록된 것 확인(설치 가능 판정과 배포도 확인 완료). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 삭제
 - **저장소 Public 전환 + MIT 라이선스**: 전환 전에 커밋 기록 전체에서 API 키·비밀번호·`.env`·에이전트 토큰이 한 번도 커밋되지 않은 것, 커밋 이메일이 noreply인 것을 확인함. 비밀값은 계속 Vercel 환경변수에만 둘 것 — 이제 커밋하면 바로 공개됨
 - **로그인창 placeholder**: `••••••••`(점 8개)가 비밀번호 길이 힌트처럼 보여서 `Enter password` 글자로 바꿈. 입력 중에 찍히는 점은 브라우저 기본 동작이라 그대로
+- **GitHub 첫 화면 정리**: 저장소 루트에 `README.md`(소개·폴더 구성·직접 배포하는 법, 영어) 추가, `jarvischan-vercel/README.md`에 저장소째 import하면 Root Directory를 `jarvischan-vercel`로 지정하라는 안내 추가. 저장소 설명·토픽·홈페이지(`https://jarvischan.vercel.app`, 옛 blush 주소였음)도 설정. 루트 README·LICENSE는 Root Directory 밖이라 배포되지 않음
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
 ---
@@ -583,17 +584,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 104,566 bytes | `4a242e4bed9a67bb…` |
+| `index.html` | 104,556 bytes | `4ae2de82a09e5e87…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
-| `README.md` | 4,153 bytes | `5a2a7d280202ede7…` |
+| `README.md` | 4,242 bytes | `45ab50b38673638a…` |
 | `manifest.webmanifest` | 568 bytes | `954673f909847f9b…` |
 | `.env.example` | 291 bytes | `4dca9d87e66b0f3d…` |
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=4a242e4bed9a67bb53c29e3e19e40b1b3cd2c54d9bd7c1a64b9969260e0a8a59 -->
+<!-- FILE: index.html sha256=4ae2de82a09e5e87e698127aa1199a27d8fe10ad7efb5023b16799e384fc5241 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -3381,7 +3382,7 @@ module.exports = async (req, res) => {
 
 ### `README.md`
 
-<!-- FILE: README.md sha256=5a2a7d280202ede7881404c5fb85cfb53e836a7ddc9333069c40173cbbf52cdd -->
+<!-- FILE: README.md sha256=45ab50b38673638a126565258f2897132afd96cdf38a6dddc8a731365713c734 -->
 ````markdown
 # Jarvischan (Vercel)
 
@@ -3410,7 +3411,8 @@ A shared **password** gates it so strangers can't burn your free quota.
 **Option A — drag & drop / Git (easiest)**
 1. Put this folder in a GitHub repo (or use Vercel's "deploy folder").
 2. On https://vercel.com → **Add New → Project** → import the repo.
-3. Framework preset: **Other**. Deploy.
+3. Framework preset: **Other**. If you imported this whole repository, set
+   **Root Directory** to `jarvischan-vercel`. Deploy.
 
 **Option B — CLI**
 ```bash

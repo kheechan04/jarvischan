@@ -25,7 +25,8 @@ A shared **password** gates it so strangers can't burn your free quota.
 **Option A — drag & drop / Git (easiest)**
 1. Put this folder in a GitHub repo (or use Vercel's "deploy folder").
 2. On https://vercel.com → **Add New → Project** → import the repo.
-3. Framework preset: **Other**. Deploy.
+3. Framework preset: **Other**. If you imported this whole repository, set
+   **Root Directory** to `jarvischan-vercel`. Deploy.
 
 **Option B — CLI**
 ```bash
