@@ -40,6 +40,8 @@ jarvischan-vercel/
 ├── index.html      # 화면 전체: HUD 캔버스, 음성, 대화, 결과 카드, 타이머, 테마 (빌드 과정 없음)
 ├── api/chat.js     # Vercel Node 서버 함수: 비밀번호 확인, Groq 도구 호출 루프, 도구 7개 + 로컬 에이전트 도구 8개(§9)
 ├── api/transcribe.js # Vercel Node 서버 함수: 녹음 → Groq Whisper 받아쓰기(한국어·영어 감지)
+├── manifest.webmanifest # PWA 설치 정보(이름·아이콘·standalone) — 크롬 '설치' 버튼, iOS 홈 화면 추가
+├── icons/          # PWA 아이콘 PNG 4개(192·512·maskable 512·apple-touch 180) — 바이너리라 부록에 없음, 저장소에 직접 있음
 ├── package.json    # 의존성 없음
 ├── README.md
 └── .env.example    # 환경변수 이름 안내 (실제 값은 넣지 않음)
@@ -299,7 +301,7 @@ import re, pathlib, hashlib
 md = pathlib.Path("JARVISCHAN_BUILD_GUIDE.md").read_text(encoding="utf-8")
 # marker must start a line and the path has no spaces, so this script's own text never matches
 files = re.findall(r"(?ms)^<!-- FILE: (\S+) sha256=([0-9a-f]{64}) -->\n````[a-z]*\n(.*?)\n````\n", md)
-assert len(files) == 6, f"expected 6 files, found {len(files)}"
+assert len(files) == 7, f"expected 7 files, found {len(files)}"
 for path, digest, body in files:
     data = (body + "\n").encode("utf-8")
     ok = hashlib.sha256(data).hexdigest() == digest
@@ -513,6 +515,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - 이 가이드 파일 이름 `JARVIS_BUILD_GUIDE.md` → `JARVISCHAN_BUILD_GUIDE.md`, `package.json` 이름·README 문구·User-Agent·Whisper 힌트 문구·스크린샷 파일명도 jarvischan으로
 - 저장소 루트에 `Jarvischan 열기.html` 추가 — 더블클릭하면 `https://jarvischan.vercel.app`으로 바로 넘어가는 바로가기 페이지(Vercel Root Directory 밖이라 배포되진 않음)
 - **사용자 확인 완료**: 새 주소에서 비밀번호·토큰 재입력 후 로컬 에이전트 연결 정상. 서버 도구 7개 실제 API 시험 통과, 에이전트는 새 주소 인증·잘못된 Origin/토큰 거부까지 확인
+- **PWA 추가**: `manifest.webmanifest` + `icons/` + `index.html` `<head>`에 manifest·theme-color·apple-touch-icon 링크. 크롬 주소창의 **설치** 버튼으로 앱 설치, 아이폰·아이패드는 공유 → 홈 화면에 추가. service worker는 안 넣음 — 크롬이 더 이상 설치 조건으로 요구하지 않고, 캐시 때문에 배포 후 옛 화면이 뜨는 문제를 피하려고. 헤드리스 크롬 `Page.getInstallabilityErrors`로 설치 가능(오류 0개) 확인
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
 ---
@@ -571,20 +574,21 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ## 부록 — 파일 원본
 
-아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 6개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
+아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`icons/`의 PNG 4개도 바이너리라 부록에 없어요** — 저장소의 `jarvischan-vercel/icons/`에서 그대로 쓰세요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 7개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 104,156 bytes | `9af41f620a06b4de…` |
+| `index.html` | 104,644 bytes | `ddc7919fd5b794b9…` |
 | `api/chat.js` | 31,349 bytes | `1e43a828cfafa7d7…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
 | `README.md` | 4,167 bytes | `ecfa5da64a07781d…` |
+| `manifest.webmanifest` | 573 bytes | `199ea5dc1780046f…` |
 | `.env.example` | 291 bytes | `4dca9d87e66b0f3d…` |
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=9af41f620a06b4de3eb822d22f9ccfbc0cbacb8e680ce8096ef2aa8d8039a6ea -->
+<!-- FILE: index.html sha256=ddc7919fd5b794b95ce36849b25b570236d158f8f8bdac3e81bfc5151880e5df -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -592,6 +596,14 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvischan Core · Voice</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#020810">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jarvischan">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script>try{var t=localStorage.getItem("jarvis_theme");document.documentElement.setAttribute("data-core",t==="mignon"?"mignon":"stark")}catch(e){document.documentElement.setAttribute("data-core","stark")}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3461,4 +3473,26 @@ GROQ_API_KEY=your_free_groq_key_here
 JARVIS_PASSWORD=choose-a-password
 # optional — leave unset to auto-pick the first model your key can use
 # GROQ_MODEL=openai/gpt-oss-120b
+````
+
+### `manifest.webmanifest`
+
+<!-- FILE: manifest.webmanifest sha256=199ea5dc1780046fcc43885d508fe2597507422991f1a390d859117d529418ff -->
+````json
+{
+  "name": "Jarvischan Core",
+  "short_name": "Jarvischan",
+  "description": "Jarvischan voice command center",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020810",
+  "theme_color": "#020810",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
 ````
