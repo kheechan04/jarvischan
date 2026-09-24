@@ -1,4 +1,4 @@
-# Jarvischan Core · Voice (Vercel)
+# Jarvischan (Vercel)
 
 A voice-driven "Jarvischan" command center you can deploy to a public URL.
 Speak to it, it replies out loud, shows live weather + search-style result

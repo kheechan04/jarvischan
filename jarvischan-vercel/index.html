@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Jarvischan Core · Voice</title>
+<title>Jarvischan</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#020810">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -84,7 +84,6 @@
     margin:0; font-size:15px; font-weight:700; letter-spacing:.28em;
     text-transform:uppercase; white-space:nowrap;
   }
-  .brand h1 span{color:var(--magenta)}
   .status-pill{
     font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
     text-transform:uppercase; color:var(--ink-dim);
@@ -343,7 +342,7 @@
   <header>
     <div class="brand">
       <span class="dot" aria-hidden="true"></span>
-      <h1>JARVISCHAN<span>·</span>CORE</h1>
+      <h1>JARVISCHAN</h1>
     </div>
     <div class="hdr-right">
       <div class="status-pill local" id="conn"><span class="led"></span><span id="connlabel">Booting</span></div>
@@ -804,7 +803,7 @@
     if("letterSpacing" in cx) cx.letterSpacing="0.18em";
     cx.font="500 "+Math.max(7,R*0.2).toFixed(1)+"px 'IBM Plex Mono',monospace";
     cx.fillStyle=rgba(PAL.main,(0.65*boot).toFixed(3));
-    cx.fillText("J.A.R.V.I.S · CORE "+String(Math.round(energy*100)).padStart(3,"0"), CXp, CYp-R*3.62);
+    cx.fillText("JARVISCHAN · "+String(Math.round(energy*100)).padStart(3,"0"), CXp, CYp-R*3.62);
     cx.restore();
   }
 

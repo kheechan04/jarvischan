@@ -1,4 +1,4 @@
-# Jarvischan Core 빌드 가이드
+# Jarvischan 빌드 가이드
 
 음성으로 말하면 대답하고, 실제 도구(날씨·대기질·환율·위키·공휴일·헤드라인·타이머)를 쓰는 영화 스타일 음성 비서를 Vercel에 배포하는 가이드예요. 2026-09-16 기준 배포본(`https://jarvis-vercel-beta.vercel.app`)과 똑같은 결과물을 만들 수 있어요.
 
@@ -10,7 +10,7 @@
 
 ## Claude Code에게 이렇게 말하세요
 
-> 이 가이드(`JARVISCHAN_BUILD_GUIDE.md`)대로 Jarvischan Core를 구현하고 Vercel에 배포해줘. 부록의 파일은 추출 스크립트로 그대로 꺼내고, 검증 단계를 모두 통과한 뒤에 배포해. API 키와 비밀번호는 내가 직접 넣을게.
+> 이 가이드(`JARVISCHAN_BUILD_GUIDE.md`)대로 Jarvischan을 구현하고 Vercel에 배포해줘. 부록의 파일은 추출 스크립트로 그대로 꺼내고, 검증 단계를 모두 통과한 뒤에 배포해. API 키와 비밀번호는 내가 직접 넣을게.
 
 ### Claude Code가 지켜야 할 규칙
 
@@ -269,7 +269,7 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 | 아크 리액터 코어 | 0 ~ 1 | 렌즈 그라데이션, 0.66에서 도는 코일 10개, 1과 0.4에 밝은 테두리 |
 | 반짝이 입자 | 1.25 ~ 3.5 | 46개가 궤도를 돌고, 가장 밝을 때 십자 빛 |
 | 파동 | 1.2 → 3.4 | 박수 순간 주황 파동, 활성 상태일 때 퍼지는 링 |
-| 글자 | ±3.62 | 아래는 상태(STANDBY/LISTENING/PROCESSING/RESPONDING), 위는 `J.A.R.V.I.S · CORE 000`(에너지 수치) |
+| 글자 | ±3.62 | 아래는 상태(STANDBY/LISTENING/PROCESSING/RESPONDING), 위는 `JARVISCHAN · 000`(에너지 수치) |
 
 - **깜빡임:** 매 프레임 밝기를 0.93~1 사이에서 흔들고, 237프레임마다 3프레임 동안 다이얼과 조각 링이 흐려져요(신호 끊김 효과).
 - **회전 속도:** `(1 + energy × 1.4) × (처리 중이면 2.6)`. 각도는 `S.hudA/hudB/hudC/sweep`에 누적해서 속도가 바뀌어도 튀지 않아요.
@@ -516,6 +516,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - 저장소 루트에 `Jarvischan 열기.html` 추가 — 더블클릭하면 `https://jarvischan.vercel.app`으로 바로 넘어가는 바로가기 페이지(Vercel Root Directory 밖이라 배포되진 않음)
 - **사용자 확인 완료**: 새 주소에서 비밀번호·토큰 재입력 후 로컬 에이전트 연결 정상. 서버 도구 7개 실제 API 시험 통과, 에이전트는 새 주소 인증·잘못된 Origin/토큰 거부까지 확인
 - **PWA 추가**: `manifest.webmanifest` + `icons/` + `index.html` `<head>`에 manifest·theme-color·apple-touch-icon 링크. 크롬 주소창의 **설치** 버튼으로 앱 설치, 아이폰·아이패드는 공유 → 홈 화면에 추가. service worker는 안 넣음 — 크롬이 더 이상 설치 조건으로 요구하지 않고, 캐시 때문에 배포 후 옛 화면이 뜨는 문제를 피하려고. 헤드리스 크롬 `Page.getInstallabilityErrors`로 설치 가능(오류 0개) 확인
+- **이름에서 "Core" 제거**: 탭 제목·헤더(`JARVISCHAN·CORE` → `JARVISCHAN`)·HUD 링 위 글씨(`J.A.R.V.I.S · CORE 000` → `JARVISCHAN · 000`)·PWA 앱 이름·README·가이드 제목·User-Agent를 모두 그냥 **Jarvischan**으로. 부팅 문구 "core online"처럼 시스템 상태를 말하는 core와 `data-core`·`#core` 같은 내부 이름은 그대로
 - **확인이 남은 것:** 사용자가 크롬에서 **설치** 버튼으로 PWA를 직접 설치해 보는 것(설치 가능 판정과 배포는 확인 완료). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 삭제
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
@@ -579,24 +580,24 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 104,644 bytes | `ddc7919fd5b794b9…` |
-| `api/chat.js` | 31,349 bytes | `1e43a828cfafa7d7…` |
+| `index.html` | 104,566 bytes | `4a242e4bed9a67bb…` |
+| `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
-| `README.md` | 4,167 bytes | `ecfa5da64a07781d…` |
-| `manifest.webmanifest` | 573 bytes | `199ea5dc1780046f…` |
+| `README.md` | 4,153 bytes | `5a2a7d280202ede7…` |
+| `manifest.webmanifest` | 568 bytes | `954673f909847f9b…` |
 | `.env.example` | 291 bytes | `4dca9d87e66b0f3d…` |
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=ddc7919fd5b794b95ce36849b25b570236d158f8f8bdac3e81bfc5151880e5df -->
+<!-- FILE: index.html sha256=4a242e4bed9a67bb53c29e3e19e40b1b3cd2c54d9bd7c1a64b9969260e0a8a59 -->
 ````html
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Jarvischan Core · Voice</title>
+<title>Jarvischan</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#020810">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -677,7 +678,6 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     margin:0; font-size:15px; font-weight:700; letter-spacing:.28em;
     text-transform:uppercase; white-space:nowrap;
   }
-  .brand h1 span{color:var(--magenta)}
   .status-pill{
     font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
     text-transform:uppercase; color:var(--ink-dim);
@@ -936,7 +936,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   <header>
     <div class="brand">
       <span class="dot" aria-hidden="true"></span>
-      <h1>JARVISCHAN<span>·</span>CORE</h1>
+      <h1>JARVISCHAN</h1>
     </div>
     <div class="hdr-right">
       <div class="status-pill local" id="conn"><span class="led"></span><span id="connlabel">Booting</span></div>
@@ -1397,7 +1397,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     if("letterSpacing" in cx) cx.letterSpacing="0.18em";
     cx.font="500 "+Math.max(7,R*0.2).toFixed(1)+"px 'IBM Plex Mono',monospace";
     cx.fillStyle=rgba(PAL.main,(0.65*boot).toFixed(3));
-    cx.fillText("J.A.R.V.I.S · CORE "+String(Math.round(energy*100)).padStart(3,"0"), CXp, CYp-R*3.62);
+    cx.fillText("JARVISCHAN · "+String(Math.round(energy*100)).padStart(3,"0"), CXp, CYp-R*3.62);
     cx.restore();
   }
 
@@ -2723,7 +2723,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=1e43a828cfafa7d7f50a96dd9e72af1eae7d4c3d5a71e520cd25513f9548a5cb -->
+<!-- FILE: api/chat.js sha256=2d56f0ef5e63d567e961aac1422b78472c301c6bb3249a1e937ebf28221468fc -->
 ````js
 // Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
@@ -2766,7 +2766,7 @@ const SYSTEM = [
   'FORMAT: on the FIRST line output exactly "ROUTE: <AgentName>" choosing one of Strategist, Researcher, Chief of Staff, Finance, Editor, Memory, Design, Engineering, Calendar, Email, Social, Ops, Marketing, Sales, Developer (or "ROUTE: none"). This only lights a node on screen. Then a blank line, then the spoken reply.'
 ].join("\n");
 
-const UA = "jarvischan-core/1.0 (personal voice assistant on Vercel)";
+const UA = "jarvischan/1.0 (personal voice assistant on Vercel)";
 const MAX_ROUNDS = 3;
 
 /* ---------------- tool definitions (sent to Groq) ---------------- */
@@ -3378,9 +3378,9 @@ module.exports = async (req, res) => {
 
 ### `README.md`
 
-<!-- FILE: README.md sha256=ecfa5da64a07781d13d11093426e8421c4ab8ff391c9465fb34b888daf4a7a55 -->
+<!-- FILE: README.md sha256=5a2a7d280202ede7881404c5fb85cfb53e836a7ddc9333069c40173cbbf52cdd -->
 ````markdown
-# Jarvischan Core · Voice (Vercel)
+# Jarvischan (Vercel)
 
 A voice-driven "Jarvischan" command center you can deploy to a public URL.
 Speak to it, it replies out loud, shows live weather + search-style result
@@ -3478,10 +3478,10 @@ JARVIS_PASSWORD=choose-a-password
 
 ### `manifest.webmanifest`
 
-<!-- FILE: manifest.webmanifest sha256=199ea5dc1780046fcc43885d508fe2597507422991f1a390d859117d529418ff -->
+<!-- FILE: manifest.webmanifest sha256=954673f909847f9bb5e835981ab6bd8fc75e42b10a263bbfd6a61841ec020e58 -->
 ````json
 {
-  "name": "Jarvischan Core",
+  "name": "Jarvischan",
   "short_name": "Jarvischan",
   "description": "Jarvischan voice command center",
   "id": "/",
