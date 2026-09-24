@@ -521,7 +521,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **PWA 설치 확인 완료:** 사용자가 크롬에서 직접 설치해서 `Chrome 앱\Jarvischan`으로 등록된 것 확인(설치 가능 판정과 배포도 확인 완료). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 삭제
 - **저장소 Public 전환 + MIT 라이선스**: 전환 전에 커밋 기록 전체에서 API 키·비밀번호·`.env`·에이전트 토큰이 한 번도 커밋되지 않은 것, 커밋 이메일이 noreply인 것을 확인함. 비밀값은 계속 Vercel 환경변수에만 둘 것 — 이제 커밋하면 바로 공개됨
 - **로그인창 placeholder**: `••••••••`(점 8개)가 비밀번호 길이 힌트처럼 보여서 `Enter password` 글자로 바꿈. 입력 중에 찍히는 점은 브라우저 기본 동작이라 그대로
-- **GitHub 첫 화면 정리**: 저장소 루트에 `README.md`(소개·폴더 구성·직접 배포하는 법, 영어) 추가, `jarvischan-vercel/README.md`에 저장소째 import하면 Root Directory를 `jarvischan-vercel`로 지정하라는 안내 추가. 저장소 설명·토픽·홈페이지(`https://jarvischan.vercel.app`, 옛 blush 주소였음)도 설정. 루트 README·LICENSE는 Root Directory 밖이라 배포되지 않음
+- **GitHub 첫 화면 정리**: 저장소 루트에 `README.md`(소개·폴더 구성·직접 배포하는 법, 한국어) 추가, `jarvischan-vercel/README.md`에 저장소째 import하면 Root Directory를 `jarvischan-vercel`로 지정하라는 안내 추가. 저장소 설명·토픽·홈페이지(`https://jarvischan.vercel.app`, 옛 blush 주소였음)도 설정. 포트폴리오 페이지의 저장소 표기도 `(private)` → 공개·MIT로 바꾸고 링크 추가. 루트 README·LICENSE는 Root Directory 밖이라 배포되지 않음
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
 ---
