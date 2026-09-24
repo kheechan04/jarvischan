@@ -1,14 +1,14 @@
 # Jarvischan 빌드 가이드
 
-음성으로 말하면 대답하고, 실제 도구(날씨·대기질·환율·위키·공휴일·헤드라인·타이머)를 쓰고, 로컬 에이전트로 내 컴퓨터의 앱까지 여는 영화 스타일 음성 비서를 Vercel에 배포하는 가이드예요. 지금 배포본(`https://jarvischan.vercel.app`)과 똑같은 결과물을 만들 수 있어요.
+음성으로 말하면 대답하고, 실제 도구(날씨·대기질·환율·위키·공휴일·헤드라인·타이머)를 쓰고, 로컬 에이전트로 내 컴퓨터의 앱까지 여는 영화 스타일 음성 비서를 Vercel에 배포하는 가이드입니다. 지금 배포본(`https://jarvischan.vercel.app`)과 똑같은 결과물을 만들 수 있습니다.
 
-이 문서 하나에 명세, 구현 순서, 그동안 겪은 함정, 테스트 방법, 그리고 **파일 원본 전체**(맨 아래 부록)가 들어 있어요.
+이 문서 하나에 명세, 구현 순서, 그동안 겪은 함정, 테스트 방법, 그리고 **파일 원본 전체**(맨 아래 부록)가 들어 있다.
 
-**이미 배포돼 있는 상태에서 이어서 작업하는 거라면:** `jarvischan-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스)에도 연결돼 있어요. §5-1 추출 스크립트를 다시 돌릴 필요 없이, 파일을 바로 수정하고 §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포돼요(§5-3b). 수정한 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 방식으로 다시 동기화해서 md와 실제 코드가 항상 같은 내용이게 유지해주세요. 현재 상태 요약은 §8 참고.
+**이미 배포된 상태에서 이어서 작업한다면:** `jarvischan-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스)에도 연결돼 있다. §5-1 추출 스크립트를 다시 돌릴 필요 없이 파일을 바로 고치고, §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포된다(§5-3b). 고친 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 형식으로 다시 동기화해서, md와 실제 코드가 항상 같은 내용이게 유지한다. 현재 상태 요약은 §8에 있다.
 
 ---
 
-## Claude Code에게 이렇게 말하세요
+## Claude Code에게 이렇게 말한다
 
 > 이 가이드(`JARVISCHAN_BUILD_GUIDE.md`)대로 Jarvischan을 구현하고 Vercel에 배포해줘. 부록의 파일은 추출 스크립트로 그대로 꺼내고, 검증 단계를 모두 통과한 뒤에 배포해. API 키와 비밀번호는 내가 직접 넣을게.
 
@@ -26,9 +26,10 @@
 | 영역 | 내용 |
 |---|---|
 | 화면 | 영화 속 JARVIS 스타일 홀로그램 HUD 코어, 15개 에이전트 노드가 도는 3D 구, 대화 말풍선, 결과 카드 창, 원형 음성 이퀄라이저 |
-| 음성 | Groq Whisper 음성 인식(한국어·영어 자동 감지, 녹음되는 모든 브라우저) + 브라우저 음성 합성(한국어·영어 목소리 자동 선택). 로그인 전이나 녹음이 안 되면 Chrome 음성 인식으로 대체. 박수 두 번으로 깨우기 |
+| 음성 | Groq Whisper 음성 인식(한국어·영어 자동 감지, 녹음되는 모든 브라우저) + 브라우저 음성 합성(한국어·영어 목소리 자동 선택). 로그인 전이나 녹음이 안 되면 Chrome 음성 인식으로 대체. 박수 두 번이나 웨이크워드로 깨우기 |
 | 두뇌 | Vercel 서버 함수 `api/chat.js` → Groq(무료). 모델이 도구를 스스로 골라 호출 |
 | 도구 | 날씨·4일 예보, 대기질(PM2.5·PM10), 환율, 위키 요약, 공휴일, 테크 헤드라인, 타이머. **모두 키 불필요** |
+| 컴퓨터 조작 | 선택 사항인 로컬 에이전트(§9)로 앱·URL·파일 열기, 스크린샷, 볼륨 등. 윈도우 전용 |
 | 보안 | 공용 비밀번호 1개(`JARVIS_PASSWORD`). Groq 키는 서버에만 있고 브라우저로 가지 않음 |
 | 테마 | Stark(청록 홀로그램 + 주황, 기본값) / Mignon(마젠타 + 노랑). 화면에서 바꾸면 기억됨 |
 | 비용 | Vercel Hobby + Groq 무료 플랜 = 0원 |
@@ -47,15 +48,17 @@ jarvischan-vercel/
 └── .env.example    # 환경변수 이름 안내 (실제 값은 넣지 않음)
 
 local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실행하는 동반 프로그램 — §9
-├── agent.js         # ws://localhost:8765 서버, 화이트리스트 명령 실행
-├── apps.json        # 열기/닫기 가능한 앱 허용 목록(친숙한 이름 → 실행 명령·프로세스명)
+├── agent.js         # ws://localhost:8765 서버, 허용 목록 명령 실행
+├── apps.json        # 열기/닫기 가능한 앱 허용 목록(부르는 이름 → 실행 명령·프로세스명)
 ├── package.json     # 의존성: ws
 ├── start-agent.bat  # 더블클릭 실행용
 ├── install-autostart.(ps1|bat), uninstall-autostart.(ps1|bat)  # 윈도우 로그인 시 자동 실행
 └── README.md        # 설치·페어링·명령 목록 사용법
+
+README.md, LICENSE   # 저장소 소개(한국어)와 MIT 라이선스 — Root Directory 밖이라 배포되지 않음
 ```
 
-프레임워크와 빌드 과정, npm 의존성이 모두 없어요(`local-agent/`는 `ws` 하나만 예외). Vercel이 `index.html`은 정적 파일로, `api/chat.js`는 Node 함수로 자동 인식해요. `local-agent/`는 Vercel에 배포되지 않고 사용자 컴퓨터에서 직접 실행돼요.
+프레임워크, 빌드 과정, npm 의존성이 모두 없다(`local-agent/`의 `ws` 하나만 예외). Vercel이 `index.html`은 정적 파일로, `api/*.js`는 Node 함수로 자동 인식한다. `local-agent/`는 Vercel에 배포되지 않고 사용자 컴퓨터에서 직접 실행된다.
 
 ---
 
@@ -80,7 +83,7 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
             │
             ▼
 [브라우저]
-  cards → 오른쪽 결과 창 / actions(timer) → 카운트다운 / text → 말풍선 + 음성
+  cards → 오른쪽 결과 창 / actions(timer) → 카운트다운 / actions(device) → 로컬 에이전트 / text → 말풍선 + 음성
   두뇌 연결 실패 → 날씨만 브라우저에서 직접 조회, 나머지는 "지금은 못 한다"고 솔직하게 대답
 ```
 
@@ -96,11 +99,11 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
 { "password": "…", "messages": [{"role":"user","content":"100 dollars in won"}], "tz": "Asia/Seoul", "lang": "auto", "localAgent": false }
 ```
 
-- `ping: true`만 보내면 비밀번호만 확인하고 `{ok:true}`를 돌려줘요. 비밀번호 화면에서 써요.
-- `messages`는 `user`와 `assistant` 역할만 받아요(최근 20개 = 약 10턴, 각 2,000자까지 — 기억 범위와 응답 속도 사이의 절충값. 기록이 많을수록 매번 보내는 프롬프트가 커져서 응답이 느려짐). `system`이나 `tool` 역할은 서버가 버려요.
-- `tz`는 현재 시각을 알려주는 데 써요. 기본값은 `Asia/Seoul`이에요.
-- `lang`(auto·ko·en): ko나 en이면 그 언어로만 대답하고, auto면 사용자가 쓴 언어로 대답해요.
-- `localAgent`: 로컬 에이전트가 지금 연결돼 있으면 `true`예요. 이때만 컴퓨터 조작 도구 9개(§9)를 모델에 넘겨요.
+- `ping: true`만 보내면 비밀번호만 확인하고 `{ok:true}`를 돌려준다. 비밀번호 화면에서 쓴다.
+- `messages`는 `user`와 `assistant` 역할만 받는다(최근 20개 = 약 10턴, 각 2,000자까지). 기억 범위와 응답 속도 사이의 절충값이다 — 기록이 많을수록 매번 보내는 프롬프트가 커져서 응답이 느려진다. `system`이나 `tool` 역할은 서버가 버린다.
+- `tz`는 현재 시각을 알려주는 데 쓴다. 기본값은 `Asia/Seoul`.
+- `lang`(auto·ko·en): ko나 en이면 그 언어로만 대답하고, auto면 사용자가 쓴 언어로 대답한다.
+- `localAgent`: 로컬 에이전트가 지금 연결돼 있으면 `true`. 이때만 컴퓨터 조작 도구 9개(§9)를 모델에 넘긴다.
 
 **응답 (200)**
 
@@ -114,7 +117,7 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
 }
 ```
 
-- `text` 첫 줄의 `ROUTE: <에이전트>`는 화면의 노드를 켜는 데만 써요. 실제로 일을 넘기지는 않아요.
+- `text` 첫 줄의 `ROUTE: <에이전트>`는 화면의 노드를 켜는 데만 쓴다. 실제로 일을 넘기지는 않는다.
 
 **오류 코드**
 
@@ -136,13 +139,13 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
 
 **응답:** `{ "text": "오늘 부산 날씨 어때?", "language": "ko", "model": "whisper-large-v3-turbo" }`
 
-- 모델: `whisper-large-v3-turbo`, 404면 `whisper-large-v3`
-- `lang`이 ko나 en이면 Whisper에 언어를 알려줘요(정확도가 올라가요). auto면 자동 감지예요.
-- 무음 판정: 모든 구간의 `no_speech_prob`가 0.6보다 크면 빈 글자로 돌려줘요. "시청해주셔서 감사합니다" 같은 Whisper 환각 문구도 빈 글자로 바꿔요.
-- 언어: 응답의 `language`(korean/english)를 쓰고, 없으면 한글이 들어 있는지로 판단해요.
-- Vercel은 `application/octet-stream` 본문을 Buffer(`req.body`)로 넘겨줘요. 요청 본문 한도가 4.5MB라 녹음은 20초로 제한해요.
+- 모델: `whisper-large-v3-turbo`, 404면 `whisper-large-v3`.
+- `lang`이 ko나 en이면 Whisper에 언어를 알려준다(정확도가 올라간다). auto면 자동 감지.
+- 무음 판정: 모든 구간의 `no_speech_prob`가 0.6보다 크면 빈 글자로 돌려준다. "시청해주셔서 감사합니다" 같은 Whisper 환각 문구도 빈 글자로 바꾼다.
+- 언어: 응답의 `language`(korean/english)를 쓰고, 없으면 한글이 들어 있는지로 판단한다.
+- Vercel은 `application/octet-stream` 본문을 Buffer(`req.body`)로 넘겨준다. 요청 본문 한도가 4.5MB라서 녹음은 20초로 제한한다.
 - 오류: 401 `bad_password` · 400 `empty_audio` · 413 `too_large` · 429 `rate_limited` · 500 `server_missing_key` · 502 `upstream`
-- 무료 한도: 하루 2,000건, 오디오 28,800초. 한 번에 최소 10초로 계산돼요.
+- 무료 한도: 하루 2,000건, 오디오 28,800초. 한 번에 최소 10초로 계산된다.
 
 ### 도구 7개 (키 전부 불필요)
 
@@ -157,9 +160,9 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
 | `set_timer` | (없음) | minutes, seconds, label | 브라우저 타이머 액션. 최대 6시간 |
 
 - 한국 기준 등급 — PM2.5: 좋음 ≤15, 보통 ≤35, 나쁨 ≤75, 그 이상은 매우 나쁨 / PM10: ≤30, ≤80, ≤150 (µg/m³)
-- 한글 도시 이름(서울·부산·제주 등 30곳, `KO_CITY`)은 서버에서 영어로 바꿔요. 한국 도시는 `countryCode=KR`로 한국 안에서만 찾아요. 그냥 "Jeju"로 찾으면 에티오피아가 나와요.
-- 외부 호출은 모두 7초 제한 시간이 있고, `User-Agent` 헤더를 붙여요(위키가 요구해요).
-- 도구가 실패하면 예외를 던지지 않고 `{error:"…"}`를 모델에 넘겨요. 모델은 무엇이 실패했는지 말로 설명해요.
+- 한글 도시 이름(서울·부산·제주 등 30곳, `KO_CITY`)은 서버에서 영어로 바꾼다. 한국 도시는 `countryCode=KR`로 한국 안에서만 찾는다. 그냥 "Jeju"로 찾으면 에티오피아가 나온다.
+- 외부 호출은 모두 7초 제한 시간이 있고, `User-Agent` 헤더를 붙인다(위키가 요구한다).
+- 도구가 실패하면 예외를 던지지 않고 `{error:"…"}`를 모델에 넘긴다. 모델은 무엇이 실패했는지 말로 설명한다.
 
 ### 모델 선택 (중요)
 
@@ -181,25 +184,25 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 | `qwen/*` | `reasoning_effort:"none"`, `reasoning_format:"hidden"`, `max_completion_tokens:600` |
 | 그 외 | `max_completion_tokens:300` |
 
-- 생각 과정이 있는 모델은 생각에 쓰는 토큰도 한도에 포함돼요. 그래서 한도를 넉넉히 줘요.
-- `reasoning_format:"raw"`를 도구 호출과 같이 쓰면 400 에러가 나요.
-- 도구 호출은 `temperature 0.4`로 보내요. `tool_use_failed` 에러가 나면 한 번만 `0.1`로 다시 시도해요.
+- 생각 과정이 있는 모델은 생각에 쓰는 토큰도 한도에 포함된다. 그래서 한도를 넉넉히 준다.
+- `reasoning_format:"raw"`를 도구 호출과 같이 쓰면 400 에러가 난다.
+- 도구 호출은 `temperature 0.4`로 보낸다. `tool_use_failed` 에러가 나면 한 번만 `0.1`로 다시 시도한다.
 
 ### 실패 대비 순서
 
 1. 429 → 바로 `rate_limited`
 2. 400 `tool_use_failed` → 온도를 낮춰 1회 재시도
-3. 그 밖의 실패, 3회 반복 초과, 빈 대답 → `plainReply()`: 도구 정의 없이 일반 대화로 대답해요. 이미 받은 도구 결과는 지시문에 글로 넣어요.
-4. 그것도 실패 → 502와 함께 `Groq <상태코드>: <내용>`을 돌려줘요. 화면 노란 문구에 그대로 떠요.
+3. 그 밖의 실패, 3회 반복 초과, 빈 대답 → `plainReply()`: 도구 정의 없이 일반 대화로 대답한다. 이미 받은 도구 결과는 지시문에 글로 넣는다.
+4. 그것도 실패 → 502와 함께 `Groq <상태코드>: <내용>`을 돌려준다. 화면 노란 문구에 그대로 뜬다.
 
-실패는 모두 `console.error`로 Vercel 로그에 남아요. 키 값은 기록하지 않아요.
+실패는 모두 `console.error`로 Vercel 로그에 남는다. 키 값은 기록하지 않는다.
 
 ### 지시문(SYSTEM)의 핵심
 
 - 대답은 소리 내어 읽으므로 1~3문장, 목록·마크다운·이모지 금지
 - 사용자가 쓴 언어로 대답: 한국어는 해요체에 숫자는 아라비아 숫자+단위(25도, 13만 5천 원), 영어는 숫자를 단어로
-- 도구 인수는 영어로(도시는 로마자, 통화는 ISO 코드). 위키만 한국어 사용자에게 ko판을 써요
-- **할 수 있는 일**과 **아직 못 하는 일**(웹 검색·메일·캘린더·노션·SNS·장기 기억)을 명시. 앱·파일 열기 같은 컴퓨터 조작은 로컬 에이전트가 연결돼 있을 때만 할 수 있다고 말해요
+- 도구 인수는 영어로(도시는 로마자, 통화는 ISO 코드). 위키만 한국어 사용자에게 ko판을 쓴다
+- **할 수 있는 일**과 **아직 못 하는 일**(웹 검색·메일·캘린더·노션·SNS·장기 기억)을 명시. 앱·파일 열기 같은 컴퓨터 조작은 로컬 에이전트가 연결돼 있을 때만 할 수 있다고 말한다
 - 도구 결과로 확인되지 않은 일을 "했다", "예약했다", "저장했다"고 말하지 않기
 - "what can you do"에는 실제 기능 3~4개만 말하기
 - 도시를 말하지 않으면 서울
@@ -209,36 +212,37 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 
 ## 4. 화면 명세 — `index.html`
 
-단일 파일이에요. 폰트는 Google Fonts의 Chakra Petch(제목), IBM Plex Mono(데이터)를 써요.
+단일 파일이다. 폰트는 Google Fonts의 Chakra Petch(제목), IBM Plex Mono(데이터)를 쓴다.
 
 ### 음성 입력과 언어
 
-- 비밀번호로 들어온 뒤 녹음이 되는 브라우저면 **Whisper**를 써요. 마이크를 누르면 녹음이 시작되고, 말이 끝나고 1.2초 조용하면 자동으로 멈춰요. 다시 누르면 바로 멈추고, 최대 20초이며, 7초 동안 말이 없으면 취소돼요.
-- 말소리 판정: 녹음 첫 0.3초로 방 소음 수준을 재고(최대 0.1), 그보다 0.08 이상 크면 말소리로 봐요.
-- 녹음 형식: `audio/webm;codecs=opus` → `audio/webm` → `audio/mp4`(Safari) → `audio/ogg` 중 브라우저가 되는 것
-- 그 밖의 경우(로그인 전, 녹음 불가, Whisper 시작 실패)는 브라우저 음성 인식을 써요. 인식 언어는 Lang 메뉴를 따르고, Auto면 브라우저 언어를 따라요.
-- **Lang 메뉴**(Auto·한국어·English, `localStorage.jarvis_lang`): Auto는 Whisper가 감지한 언어로, 한국어·English는 그 언어로 고정해요. 서버에도 `lang`으로 전달해요.
-- **목소리:** 대답에 한글이 있으면 한국어 목소리(Google 한국의 > Yuna > 그 밖의 ko 목소리)를, 없으면 Voice 메뉴의 영어 목소리를 써요.
-- 기능 카드, 오프라인 대답, 오프라인 날씨, 타이머 알림, 시스템 점검 문구도 마지막 대화 언어(`lastLang`)를 따라 한국어로 나와요.
+- 비밀번호로 들어온 뒤 녹음이 되는 브라우저면 **Whisper**를 쓴다. 마이크를 누르면 녹음이 시작되고 말이 끝나면 자동으로 멈춘다. 다시 누르면 바로 멈추고, 최대 20초이며, 7초 동안 말이 없으면 취소된다.
+- 말 끝 판정: 크롬은 브라우저 자체 음성 종료 신호(`onspeechend`)를 먼저 쓴다. 그 밖에는 소리 크기로 판단한다 — 녹음 첫 0.3초로 방 소음 수준(floor, 최대 0.7)을 재고 0.7초마다 다시 잡는다. floor보다 0.08 이상 크면 말소리, 말을 들은 뒤 floor + 0.035 아래로 0.8초 이어지면 멈춘다. 이렇게 된 과정은 §6 표에 있다.
+- 녹음 형식: `audio/webm;codecs=opus` → `audio/webm` → `audio/mp4`(Safari) → `audio/ogg` 중 브라우저가 지원하는 것.
+- 그 밖의 경우(로그인 전, 녹음 불가, Whisper 시작 실패)는 브라우저 음성 인식을 쓴다. 인식 언어는 Lang 메뉴를 따르고, Auto면 브라우저 언어를 따른다.
+- **Lang 메뉴**(Auto·한국어·English, `localStorage.jarvis_lang`): Auto는 Whisper가 감지한 언어로, 한국어·English는 그 언어로 고정한다. 서버에도 `lang`으로 전달한다.
+- **목소리:** 대답에 한글이 있으면 한국어 목소리(Google 한국의 > Yuna > 그 밖의 ko 목소리)를, 없으면 Voice 메뉴의 영어 목소리를 쓴다.
+- 기능 카드, 오프라인 대답, 오프라인 날씨, 타이머 알림, 시스템 점검 문구도 마지막 대화 언어(`lastLang`)를 따라 한국어로 나온다.
 
 ### 입력 처리 순서 (`handleInput`)
 
-1. `SYS_RE`(system check 등) → 브라우저에서 바로 점검. 두뇌와 도구는 **비밀번호 인증이 됐을 때만** ✓로 표시해요.
-2. `CAP_RE`("what can you do", "뭐 할 수 있어" 등) → 기능 카드 8개를 결과 창에 먼저 띄워요.
-3. `/api/chat` 호출 → `handleTools(out)`로 카드·타이머·로그 처리 → 대답을 말풍선과 음성으로. `handleTools`에서 화면 오류가 나도 두뇌 실패로 착각하지 않게 따로 감싸요.
-4. 실패하면 401은 비밀번호 화면으로, 429는 "busy" 안내, 그 밖은 노란 문구에 원인을 표시해요.
-5. 오프라인 대비: 날씨 문장이면 브라우저에서 open-meteo를 직접 조회해요.
-6. 그 밖에는 `localBrain` → "지금은 두뇌에 연결할 수 없다"고 솔직하게 대답해요. **가짜로 '하는 척'하는 대답은 금지.**
+1. `SYS_RE`(system check, 시스템 점검 등) → 브라우저에서 바로 점검. 두뇌와 도구는 **비밀번호 인증이 됐을 때만** ✓로 표시한다.
+2. `CAP_RE`("what can you do", "뭐 할 수 있어" 등) → 기능 카드 8개를 결과 창에 먼저 띄운다.
+3. `/api/chat` 호출 → `handleTools(out)`로 카드·타이머·로그 처리 → 대답을 말풍선과 음성으로. `handleTools`에서 화면 오류가 나도 두뇌 실패로 착각하지 않게 따로 감싼다.
+4. 실패하면 401은 비밀번호 화면으로, 429는 "busy" 안내, 그 밖은 노란 문구에 원인을 표시한다.
+5. 오프라인 대비: 날씨 문장이면 브라우저에서 open-meteo를 직접 조회한다.
+6. 그 밖에는 `localBrain` → "지금은 두뇌에 연결할 수 없다"고 솔직하게 대답한다. **가짜로 '하는 척'하는 대답은 금지.**
 
 ### 타이머
 
-- `set_timer` 액션을 받으면 버튼 줄에 주황 칩(`#timer`)이 떠요. 0.5초마다 갱신하고, 끝나면 삐 소리 3번과 "Your … timer is done."을 말해요. ✕로 취소할 수 있어요.
-- 탭을 닫으면 타이머도 멈춰요. 이 사실은 도구 결과에도 적혀 있어요.
+- `set_timer` 액션을 받으면 버튼 줄에 주황 칩(`#timer`)이 뜬다. 0.5초마다 갱신하고, 끝나면 삐 소리 3번과 함께 "Your … timer is done."(한국어 대화면 한국어)을 말한다. ✕로 취소할 수 있다.
+- 탭을 닫으면 타이머도 멈춘다. 이 사실은 도구 결과에도 적혀 있다.
 
 ### 테마
 
-- `<head>`의 짧은 스크립트가 첫 화면이 그려지기 전에 `<html data-core="stark|mignon">`을 붙여요. 저장값은 `localStorage.jarvis_theme`이고, 기본은 `stark`예요.
-- CSS 색은 전부 토큰으로 써요. 마젠타 색 값은 `rgba(var(--m-rgb),a)` 형태로 바꿔 두었어요.
+- `<head>`의 짧은 스크립트가 첫 화면이 그려지기 전에 `<html data-core="stark|mignon">`을 붙인다. 저장값은 `localStorage.jarvis_theme`이고, 기본은 `stark`.
+- CSS 색은 전부 토큰으로 쓴다. 마젠타 색 값은 `rgba(var(--m-rgb),a)` 형태로 바꿔 두었다.
+- 아래 표에서 `:root` 기본값은 Mignon이지만, 저장값이 없으면 스크립트가 `stark`를 붙이므로 실제 첫 화면은 Stark다.
 
 | 토큰 | Mignon (기본 :root) | Stark (`:root[data-core="stark"]`) |
 |---|---|---|
@@ -249,12 +253,12 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 | `--bg-core` / `--bg-mid` / `--bg-gate` | `#0b0410` / `#050208` / `#17091f` | `#04121d` / `#020810` / `#061a28` |
 | `--on-accent` (강조색 위 글자) | `#f4e9f2` | `#021019` |
 
-- 캔버스 색은 JS의 `PALS.stark` / `PALS.mignon`(main, deep, hot, acc, star, starAlt, label, labelHot, neb)에서 가져와요.
-- 테마를 바꾸면 `applyTheme()` → `buildHud()`로 미리 그려 둔 레이어를 다시 그려요.
+- 캔버스 색은 JS의 `PALS.stark` / `PALS.mignon`(main, deep, hot, acc, star, starAlt, label, labelHot, neb)에서 가져온다.
+- 테마를 바꾸면 `applyTheme()` → `buildHud()`로 미리 그려 둔 레이어를 다시 그린다.
 
 ### HUD 코어 레이어 (영화 JARVIS 스타일)
 
-기준 반지름은 `Rb = min(화면 너비, 높이) × 0.078`이에요. 에너지(0~1.2)에 따라 `R = Rb × (0.94 + 0.12 × energy)`로 커지고, 부팅할 때 0.6배에서 시작해요. 링 합성은 `lighter`(빛 더하기)예요.
+기준 반지름은 `Rb = min(화면 너비, 높이) × 0.078`이다. 에너지(0~1.2)에 따라 `R = Rb × (0.94 + 0.12 × energy)`로 커지고, 부팅할 때 0.6배에서 시작한다. 링 합성은 `lighter`(빛 더하기)다.
 
 | 레이어 | 위치 (R 배수) | 설명 |
 |---|---|---|
@@ -272,11 +276,11 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 | 파동 | 1.2 → 3.4 | 박수 순간 주황 파동, 활성 상태일 때 퍼지는 링 |
 | 글자 | ±3.62 | 아래는 상태(STANDBY/LISTENING/PROCESSING/RESPONDING), 위는 `JARVISCHAN · 000`(에너지 수치) |
 
-- **깜빡임:** 매 프레임 밝기를 0.93~1 사이에서 흔들고, 237프레임마다 3프레임 동안 다이얼과 조각 링이 흐려져요(신호 끊김 효과).
-- **회전 속도:** `(1 + energy × 1.4) × (처리 중이면 2.6)`. 각도는 `S.hudA/hudB/hudC/sweep`에 누적해서 속도가 바뀌어도 튀지 않아요.
-- **움직임 줄이기 설정** 사용자에게는 회전과 깜빡임을 끄고 정지 화면으로 보여줘요.
-- 에이전트 구 반지름은 `min × 0.38`이에요(전에는 0.34). HUD와 겹치지 않게 넓혔어요.
-- **성능:** 육각형과 다이얼만 크기 변경·테마 변경·폰트 로드 때 다시 그리고, 나머지는 매 프레임 그려요.
+- **깜빡임:** 매 프레임 밝기를 0.93~1 사이에서 흔들고, 237프레임마다 3프레임 동안 다이얼과 조각 링이 흐려진다(신호 끊김 효과).
+- **회전 속도:** `(1 + energy × 1.4) × (처리 중이면 2.6)`. 각도는 `S.hudA/hudB/hudC/sweep`에 누적해서 속도가 바뀌어도 튀지 않는다.
+- **움직임 줄이기** 설정을 켠 사용자에게는 회전과 깜빡임을 끄고 정지 화면으로 보여준다.
+- 에이전트 구 반지름은 `min × 0.38`이다(전에는 0.34). HUD와 겹치지 않게 넓혔다.
+- **성능:** 육각형과 다이얼만 크기 변경·테마 변경·폰트 로드 때 다시 그리고, 나머지는 매 프레임 그린다.
 
 ### 상태별 에너지
 
@@ -294,7 +298,7 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 
 ### 5-1. 파일 꺼내기
 
-이 가이드가 있는 폴더에서 실행해요. `jarvischan-vercel/` 폴더가 만들어져요.
+이 가이드가 있는 폴더에서 실행한다. `jarvischan-vercel/` 폴더가 만들어진다.
 
 ```bash
 python3 - <<'EOF'
@@ -323,7 +327,7 @@ node --check api/transcribe.js
 python3 -c 'import re,subprocess,tempfile;h=open("index.html").read();f=tempfile.NamedTemporaryFile("w",suffix=".js",delete=False);f.write("\n".join(re.findall(r"<script>(.*?)</script>",h,re.S)));f.close();r=subprocess.run(["node","--check",f.name]);print("page script OK" if r.returncode==0 else "page script FAIL")'
 ```
 
-도구 7개를 실제 API로 시험해요. Groq를 부르지 않아서 키가 필요 없어요.
+도구 7개를 실제 API로 시험한다. Groq를 부르지 않아서 키가 필요 없다.
 
 ```bash
 node -e '
@@ -338,7 +342,7 @@ const {IMPL}=require("./api/chat.js");
 })();'
 ```
 
-7개가 모두 `OK`여야 해요.
+7개가 모두 `OK`여야 한다.
 
 ### 5-3. 배포
 
@@ -347,22 +351,22 @@ vercel whoami                                  # 로그인 확인
 vercel deploy --prod --yes --name jarvischan-vercel
 ```
 
-### 5-3b. GitHub 연동 & 자동 배포 (2026-09-22에 설정 완료)
+### 5-3b. GitHub 연동과 자동 배포 (2026-09-22에 설정 완료)
 
-현재 이 프로젝트는 GitHub과 연결돼 있어서, **`git push`만 해도 Vercel이 알아서 재배포**해요. `vercel deploy --prod --yes`는 여전히 되지만 이제 굳이 안 써도 됨.
+이 프로젝트는 GitHub과 연결돼 있어서 **`git push`만 해도 Vercel이 알아서 다시 배포한다.** `vercel deploy --prod --yes`도 여전히 되지만 굳이 쓸 필요는 없다.
 
-- 저장소: `https://github.com/kheechan04/jarvischan` (2026-09-25부터 Public), 소유자 `kheechan04`
-- Vercel 프로젝트 `khchan04/jarvischan-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvischan-vercel`**로 지정돼 있음(저장소 루트엔 가이드 md도 같이 있어서 이게 꼭 필요함)
-- 새로 Claude Code 세션을 열어서 이어서 작업할 때: 코드 수정 → `git add` → `git commit` → `git push` 하면 끝. 수동으로 `vercel deploy` 안 해도 자동으로 뜸(보통 10초 안팎)
-- 배포 확인은 `vercel ls`로 상태(`● Ready`) 보거나, `curl`로 `https://jarvischan.vercel.app/` 직접 확인
+- 저장소: `https://github.com/kheechan04/jarvischan`(2026-09-25부터 Public), 소유자 `kheechan04`
+- Vercel 프로젝트 `khchan04/jarvischan-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvischan-vercel`**로 지정돼 있다. 저장소 루트에 가이드·README·LICENSE도 같이 있어서 이 설정이 꼭 필요하다.
+- 새 Claude Code 세션에서 이어서 작업할 때: 코드 수정 → `git add` → `git commit` → `git push`로 끝난다. 수동으로 `vercel deploy`를 하지 않아도 보통 10초 안팎에 배포된다.
+- 배포 확인은 `vercel ls`로 상태(`● Ready`)를 보거나, `curl`로 `https://jarvischan.vercel.app/`을 직접 확인한다.
 
-⚠️ **처음 연결할 때 겪은 함정** (자세한 원인은 §6 표 참고): Vercel 계정에 GitHub 로그인 연결 필요 → GitHub에 Vercel 앱 설치(저장소 접근 권한) 필요 → Root Directory 설정 필요 → **로컬 git의 커밋 작성자 이메일이 계정과 안 맞으면 배포가 `Deployment Blocked`로 조용히 멈춤**. 이 저장소는 repo-local로 `git config user.email`을 GitHub 계정 연결 noreply 이메일로 맞춰뒀어서(`280937297+kheechan04@users.noreply.github.com`) 정상 작동 중. 다른 컴퓨터에서 이 저장소를 새로 클론해서 커밋하면 이 문제가 재발할 수 있음 — 그럴 땐 이메일부터 확인.
+⚠️ **처음 연결할 때 겪은 함정**(자세한 원인은 §6 표): Vercel 계정에 GitHub 로그인 연결 → GitHub에 Vercel 앱 설치(저장소 접근 권한) → Root Directory 설정이 모두 필요하고, **로컬 git의 커밋 작성자 이메일이 계정과 안 맞으면 배포가 `Deployment Blocked`로 조용히 멈춘다.** 이 저장소는 repo-local `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`280937297+kheechan04@users.noreply.github.com`)로 맞춰 둬서 정상 동작한다. 다른 컴퓨터에서 새로 클론해서 커밋하면 이 문제가 다시 생길 수 있으니 이메일부터 확인한다.
 
 ### 5-4. 환경변수 — 사용자가 직접
 
-Groq 무료 키는 https://console.groq.com → API Keys에서 만들어요(`gsk_…`).
+Groq 무료 키는 https://console.groq.com → API Keys에서 만든다(`gsk_…`).
 
-터미널에서 사용자가 직접 실행하고, 값은 물어볼 때 붙여넣어요.
+터미널에서 사용자가 직접 실행하고, 값은 물어볼 때 붙여넣는다.
 
 ```bash
 vercel env add GROQ_API_KEY production
@@ -372,13 +376,13 @@ vercel env add GROQ_API_KEY production
 vercel env add JARVIS_PASSWORD production
 ```
 
-또는 Vercel → 프로젝트 → Settings → Environment Variables에서 넣어도 돼요. `GROQ_MODEL`은 넣지 않는 걸 권장해요(자동 선택).
+Vercel → 프로젝트 → Settings → Environment Variables에서 넣어도 된다. `GROQ_MODEL`은 넣지 않는 것을 권장한다(자동 선택).
 
-⚠️ `JARVIS_PASSWORD`를 빼면 비밀번호 없이 누구나 무료 한도를 쓸 수 있어요.
+⚠️ `JARVIS_PASSWORD`를 빼면 비밀번호 없이 누구나 무료 한도를 쓸 수 있다. 저장소가 공개라 비밀번호 확인 방식도 다 보이므로, 추측하기 어려운 값으로 정한다.
 
 ### 5-5. 다시 배포하고 확인
 
-환경변수는 다시 배포해야 적용돼요.
+환경변수는 다시 배포해야 적용된다.
 
 ```bash
 vercel deploy --prod --yes
@@ -386,11 +390,11 @@ curl -s -o /dev/null -w "page %{http_code}\n" https://<프로젝트>.vercel.app/
 curl -s -w " api %{http_code}\n" -X POST -H "content-type: application/json" -d '{"messages":[{"role":"user","content":"hi"}]}' https://<프로젝트>.vercel.app/api/chat
 ```
 
-- 페이지는 `200`, 비밀번호 없는 API 요청은 `401 {"error":"bad_password"}`가 나와야 해요.
+- 페이지는 `200`, 비밀번호 없는 API 요청은 `401 {"error":"bad_password"}`가 나와야 한다.
 
 ### 5-6. 사용자 확인 (비밀번호가 필요해서 Claude는 할 수 없음)
 
-Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어로 말해요.
+Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어로 말한다.
 
 | 말하기 | 기대 결과 |
 |---|---|
@@ -401,11 +405,11 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | "next holiday" | 공휴일 카드 |
 | "timer 1 minute" | 주황 타이머 칩 → 1분 뒤 삐 소리와 음성 |
 | "send an email to my team" | 아직 못 한다고 솔직하게 대답 |
-| (한국어로) "오늘 미세먼지 어때?" | 한국어로 대답하고 한국어 목소리로 읽어줌. 로그에 `whisper ko` |
+| (한국어로) "오늘 미세먼지 어때?" | 한국어로 대답하고 한국어 목소리로 읽음. 로그에 `whisper ko` |
 | (한국어로) "제주 날씨 어때?" | 제주시(대한민국) 날씨 카드 |
 
-- 노란 문구가 뜨면 `Brain unreachable (Groq …)` 안의 내용을 확인해요.
-- 서버 로그는 `vercel logs <배포 URL>`로 볼 수 있어요.
+- 노란 문구가 뜨면 `Brain unreachable (Groq …)` 안의 내용을 확인한다.
+- 서버 로그는 `vercel logs <배포 URL>`로 본다.
 
 ---
 
@@ -413,40 +417,40 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `Groq 404 … llama-3.3-70b-versatile does not exist` | Groq에서 서비스가 종료된 것으로 보임. 다른 프로젝트에서도 같은 404가 보고됐고, Groq 문서 일부에는 아직 남아 있음 | 모델 자동 선택 로직. 모델 이름을 고정하지 말 것 |
+| `Groq 404 … llama-3.3-70b-versatile does not exist` | Groq에서 서비스가 종료된 것으로 보인다. 다른 프로젝트에서도 같은 404가 보고됐고, Groq 문서 일부에는 아직 남아 있다 | 모델 자동 선택 로직. 모델 이름을 고정하지 않는다 |
 | 예전 기본 모델 `llama-3.1-8b-instant` | 2026-08-16 종료 | 대체 모델은 `openai/gpt-oss-20b` |
-| gpt-oss 대답이 비어 있음 | 생각 과정 토큰이 한도를 다 씀 | `include_reasoning:false`, `reasoning_effort:"low"`, `max_completion_tokens:1200` |
-| 환율 API 301 | `api.frankfurter.app` 주소 변경 | `api.frankfurter.dev/v1` 사용 |
-| 위키 403 | User-Agent 헤더 없음 | 헤더 추가 |
-| 뉴스 API가 배포 사이트에서 막힘 | NewsAPI.org 무료 플랜은 localhost 전용, 기사도 24시간 지연 | 쓰지 말 것. 뉴스는 2단계 Groq 웹 검색으로 |
-| 두뇌가 끊겨도 "초안 쓸게요" | 옛 코드가 미리 적힌 가짜 답을 냄 | `localBrain`은 솔직한 오프라인 안내만 |
-| 로컬 미리보기 서버가 404 | macOS 보호 폴더(Downloads 등)를 서버가 못 읽음 | 보호되지 않는 임시 폴더로 복사해서 미리보기 |
-| `/.claude/launch.json`이 공개됨 | 프로젝트 폴더 전체가 배포됨 | 작업 파일은 프로젝트 밖에 두거나 `.vercelignore`에 추가 |
-| "제주 날씨"가 에티오피아로 나옴 | 날씨 검색이 "Jeju"를 에티오피아로 찾고, 한글 "서울"·"제주"는 결과가 없음 | 한글 도시 이름 표 + 한국 도시는 `countryCode=KR` |
-| 조용했는데 "시청해주셔서 감사합니다"가 입력됨 | Whisper가 조용한 녹음에서 문장을 지어냄 | `no_speech_prob` 검사 + 환각 문구 걸러내기 |
-| 한국어 대답이 어색한 목소리로 읽힘 | 컴퓨터에 좋은 한국어 음성이 없음 | Chrome의 "Google 한국의" 목소리 권장 |
-| 짧은 한국어를 영어로 잘못 알아들음 | 짧은 말은 언어 감지가 헷갈릴 수 있음 | Lang 메뉴를 한국어로 고정 |
-| 박수 두 번 웨이크가 잘 안 잡힘 | 공유 analyser의 `fftSize=128`(≈2.7ms 창)을 26ms마다 폴링해 대부분의 오디오를 놓침. 게다가 `getUserMedia({audio:true})`가 기본으로 켜는 자동게인·노이즈억제가 박수 같은 임펄스 소리를 눌러버림 | 박수 감지 전용 스트림을 `autoGainControl:false, noiseSuppression:false, echoCancellation:false`로 따로 열고, 그 analyser의 `fftSize`를 2048(≈43ms)로 키워 폴링 공백을 없앰. Whisper 녹음용 스트림은 그대로 둬서 받아쓰기 품질엔 영향 없음 |
-| 웨이크워드로 시작한 대화가 조용해져도 안 끝남 | "Jarvis" 인식 직후 그 음성인식 세션이 마이크를 완전히 놓기도 전에 Whisper용 마이크를 새로 잡으려다, 녹음이 "녹음 중"으로는 뜨지만 실제로는 오디오도 못 받고 종료 이벤트도 안 나는 상태로 멈춤 | 웨이크워드 인식기가 진짜로 끝났다는 신호(`onend`, 400ms 타임아웃 보조)를 받은 뒤에 Whisper 녹음을 시작하도록 순서 변경 |
-| 조용한 방이 아니면 대화가 안 끝남(생활 소음이 계속 "말하는 중"으로 잡힘) | 무음 판정 기준(floor)을 녹음 시작 300ms에 딱 한 번만 재고 끝까지 고정해서 씀. 그 이후 주변 소음이 그보다 커지면 영원히 "말하는 중"으로 오분류됨 | 3초마다 그 구간의 최저값으로 floor를 다시 앵커링. 실제 목소리는 단어·숨 사이 틈이 있어 안 걸리고, 꾸준한 생활 소음만 흡수됨 |
-| floor 재조정 후에도 여전히 말 끝나고 녹음이 안 끝남 | 마이크 레벨을 analyser의 64개 주파수 빈 **전체**(초저음 웅웅거림 ~ 초고음 히스노이즈)를 뭉뚱그려 평균 내서, 목소리와 배경 소음의 신호 구분이 약함 | 사람 목소리 대역(약 300Hz~3.4kHz)에 해당하는 빈만 골라 평균 내도록 변경(`voiceLo`/`voiceHi`, `audioCtx.sampleRate`로 계산). 그 대역 밖 소음은 레벨 계산에서 아예 빠짐 |
-| 목소리 대역 필터 이후, 조용해졌는데도 녹음 종료까지 10초 가까이 걸림 | 빈을 8개 정도로 줄여서 평균 내다 보니 한 번의 측정값 자체가 들쭉날쭉해짐. "조용함" 1.2초 연속 판정이 잡음 스파이크에 자꾸 리셋되다가 겨우 우연히 성공하는 패턴이 됨 | VAD 판정에 쓰는 값만 지수이동평균(EMA, 0.45 가중치)으로 살짝 평활화. 화면 비주얼라이저용 `S.micLevel`은 그대로 둬서 시각적 생동감엔 영향 없음 |
-| 스무딩 이후에도 정적 텀이 계속 김 | 진폭(데시벨) 기준 VAD는 아무리 다듬어도 "말이 끝났다"를 소리 크기만으로 판단하는 방식 자체에 한계가 있음 | 브라우저의 `SpeechRecognition` 자체 음성종료 감지(`onspeechend`)를 1차 신호로 사용. Whisper 녹음(MediaRecorder)과 별개로 텍스트는 안 쓰는 보조 인식 세션을 하나 더 띄워서, `onspeechend`가 뜨면 바로 `stopWhisper()`. `onend`만으로는 트리거하지 않음(말을 시작하기도 전에 끊길 위험) — 기존 진폭 VAD·7초/20초 하드캡은 미지원 브라우저·실패 대비 백업으로 유지 |
-| 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 짧은 조각(최대 80자, 마침표 없는 긴 문장은 단어 단위로 강제 분할)으로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경. 처음엔 180자로 했다가 한국어는 글자당 발음 시간이 길어서 여전히 끊겨 80자로 더 줄임 |
-| 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 문장 큐 방식으로 바꾼 뒤에도, 마지막 조각의 `onend`가 간헐적으로 아예 안 뜨는 경우가 있음(Chrome 음성 이벤트 신뢰성 문제) | 조각마다 글자 수 기반 예상 재생 시간의 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 강제로 다음 단계로 넘어가게 함 |
-| GitHub 연동 후 Vercel 배포가 `UNKNOWN` 상태로 몇 시간씩 안 끝남 | 처음엔 "Fix Git Configuration" 버튼으로만 표시돼 원인이 안 보였음. CLI 배포·git push 배포 둘 다 똑같이 막힘. 실제 원인은 Vercel이 이메일로 발송: 로컬 git의 커밋 작성자 이메일(`khchan04@naver.com`, 이 컴퓨터에 예전부터 전역 설정돼 있던 값)이 Vercel 팀 어떤 멤버와도 매칭이 안 돼서 배포를 조용히 계속 보류시킴 | ① Vercel 계정에 GitHub 로그인 연결 ② GitHub에 Vercel 앱 설치(저장소 접근 권한, All repositories로) ③ Vercel 프로젝트 Settings에서 **Root Directory를 `jarvis-vercel`로 지정**(지금은 `jarvischan-vercel`) ④ 이 저장소에 한해 `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`{id}+{username}@users.noreply.github.com`, `gh api user`로 id 확인 가능)로 맞춤. 넷 다 해야 풀림 — 자세한 절차는 §5-3b |
-| 노트북(크롬)에선 말 끝나고 바로 끊기는데 폰/패드에선 자동 종료가 거의 안 됨 | iOS Safari는 `onspeechend`(§6 위쪽 항목의 해결책) 자체가 없거나 있어도 이벤트가 전혀 안 옴 — 확인해보니 `endpointer unavailable`/`no browser endpointer` 로그만 찍히고 조용함. 그래서 기기에 상관없이 늘 돌아가던 진폭 기준 VAD로 전부 떠넘겨지는데, 그 VAD가 기대하던 "조용한 방 = 거의 0" 전제가 모바일에서는 `getUserMedia`의 `autoGainControl`이 배경 소음까지 끌어올려서 깨져 있었음 | Whisper 녹음 스트림도 `autoGainControl:false`로 열어 원본 음량을 그대로 읽게 함. iOS에서는 어차피 못 쓰는 보조 `onspeechend` 세션 생성 자체를 건너뛰어 마이크 경합 위험도 없앰 |
-| 위 수정 후에도 아이패드에서 여전히 20초 하드캡까지 안 끊김(로그로 확인: floor가 0.1에 고정) | "조용함" 기준(floor)의 상한을 0.1로 하드코딩해둠 — AGC가 켜져 있던 시절엔 조용한 방 음량이 늘 0.1 아래였지만, AGC를 끄고 나니 그 기기의 진짜 주변 소음이 0.1보다 높아서 floor가 진짜 값을 못 따라감 | 상한을 0.7로 올림(안전장치일 뿐 목표값 아님) |
-| floor 상한을 올렸는데도 말 끝나고 15초 넘게 걸려서야 끊김(로그: floor가 3초 창마다 절반씩만 목표치에 접근) | 3초 창마다 "이전 floor 절반 + 이번 구간 최솟값 절반"으로만 재보정해서, 목표 주변 소음값에 도달하는 데 여러 창(수십 초)이 걸림 | 창을 1.2초로 줄이고, 절반만 섞는 대신 그 구간 최솟값으로 바로 스냅. "조용함" 확정 대기시간도 1.2초 → 0.8초로 단축해 체감 지연을 더 줄임 |
-| 웨이크워드 "자비스찬"을 또박또박 말해야만 인식되고, 켜놓은 지 좀 지나면 그마저도 잘 안 됨 | ① 정규식이 `자비스찬`/`jarvischan` 정확한 문자열만 매칭 — 사전에 없는 만든 이름이라 조금만 웅얼거려도 ASR이 비슷한 다른 음절로 잘못 받아적으면 매칭 실패 ② 크롬의 연속(`continuous:true`) 인식 세션은 오래 켜둘수록 인식 품질이 눈에 띄게 떨어짐(문서화되지 않은 특성) | 정규식을 구분하기 쉬운 핵심 부분(`자비스`/`jarvis`)만 매칭하도록 완화하고 `maxAlternatives:3`으로 1순위 후보 말고 대안들도 검사. 대기 세션을 15초마다 강제로 새 세션으로 교체 |
-| 스크린샷을 찍으면 화면 일부만 잘려서 담김 | PowerShell 프로세스가 기본적으로 DPI-aware가 아니어서, 배율 100% 초과 디스플레이(요즘 노트북 대부분)에서 .NET이 실제 해상도 대신 축소된 "논리 해상도"를 기준으로 캡처함(실측: 2560×1600 화면이 1707×1067로 보임) | 캡처 스크립트 시작 시 `user32.dll`의 `SetProcessDPIAware()`를 호출. 여러 모니터를 다 담기 위해 `PrimaryScreen.Bounds` 대신 `SystemInformation.VirtualScreen` 사용 |
-| (안전) 앱 닫기 명령이 저장 여부 안 묻고 바로 강제종료 | `taskkill /F`를 무조건 사용 — 메모장·VS Code 등에 저장 안 한 내용이 있어도 그냥 날아감 | 기본은 `/F` 없이 정상 종료 요청(앱이 저장 여부를 직접 물어볼 수 있게) 후 실제로 프로세스가 사라졌는지 확인. 강제종료는 `force:true`를 명시적으로 받을 때만, 사용자가 "강제로 꺼줘"라고 말할 때만 LLM이 그 값을 씀 |
-| 로컬 에이전트를 테스트한 뒤 사용자가 켜 둔 에이전트까지 꺼져서 페이지의 Local agent 연결이 끊김 (2026-09-25) | 테스트용 에이전트를 끄면서 명령줄에 `agent.js`가 들어간 node 프로세스를 전부 종료함 — `start-agent.bat`로 켠 진짜 에이전트도 같은 이름이라 같이 꺼짐 | 테스트는 `JARVIS_AGENT_PORT=8799 node agent.js`처럼 **다른 포트**로 띄우고, 끌 때는 그 프로세스만 **PID로** 종료. 이름 패턴으로 한꺼번에 죽이지 않기. 끊겼으면 `start-agent.bat`를 다시 실행 |
-| Git Bash에서 `vercel api /v9/projects/…`가 `Invalid arguments. Use an API path starting with /`로 실패 | Git Bash(MSYS)가 `/`로 시작하는 인자를 윈도우 경로(`C:/Program Files/Git/v9/…`)로 바꿔서 넘김 | 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙임. 팀 프로젝트라 `?teamId=<.vercel/project.json의 orgId>`도 필요 |
+| gpt-oss 대답이 비어 있음 | 생각 과정 토큰이 한도를 다 쓴다 | `include_reasoning:false`, `reasoning_effort:"low"`, `max_completion_tokens:1200` |
+| 환율 API 301 | `api.frankfurter.app` 주소가 바뀌었다 | `api.frankfurter.dev/v1`을 쓴다 |
+| 위키 403 | User-Agent 헤더가 없다 | 헤더를 붙인다 |
+| 뉴스 API가 배포 사이트에서 막힘 | NewsAPI.org 무료 플랜은 localhost 전용이고, 기사도 24시간 늦다 | 쓰지 않는다. 뉴스는 2단계 Groq 웹 검색으로(§7) |
+| 두뇌가 끊겨도 "초안 쓸게요" | 옛 코드가 미리 적힌 가짜 답을 냈다 | `localBrain`은 솔직한 오프라인 안내만 한다 |
+| 로컬 미리보기 서버가 404 | macOS 보호 폴더(Downloads 등)를 서버가 못 읽는다 | 보호되지 않는 임시 폴더로 복사해서 미리 본다 |
+| `/.claude/launch.json`이 공개됨 | 프로젝트 폴더 전체가 배포된다 | 작업 파일은 프로젝트 밖에 두거나 `.vercelignore`에 추가한다 |
+| "제주 날씨"가 에티오피아로 나옴 | 날씨 검색이 "Jeju"를 에티오피아로 찾고, 한글 "서울"·"제주"는 결과가 없다 | 한글 도시 이름 표 + 한국 도시는 `countryCode=KR` |
+| 조용했는데 "시청해주셔서 감사합니다"가 입력됨 | Whisper가 조용한 녹음에서 문장을 지어낸다 | `no_speech_prob` 검사 + 환각 문구 걸러내기 |
+| 한국어 대답이 어색한 목소리로 읽힘 | 컴퓨터에 좋은 한국어 음성이 없다 | Chrome의 "Google 한국의" 목소리를 권장한다 |
+| 짧은 한국어를 영어로 잘못 알아들음 | 짧은 말은 언어 감지가 헷갈릴 수 있다 | Lang 메뉴를 한국어로 고정한다 |
+| 박수 두 번 웨이크가 잘 안 잡힘 | 공유 analyser의 `fftSize=128`(≈2.7ms 창)을 26ms마다 폴링해서 대부분의 오디오를 놓친다. 게다가 `getUserMedia({audio:true})`가 기본으로 켜는 자동 게인·노이즈 억제가 박수 같은 순간적인 소리를 눌러 버린다 | 박수 감지 전용 스트림을 `autoGainControl:false, noiseSuppression:false, echoCancellation:false`로 따로 열고, 그 analyser의 `fftSize`를 2048(≈43ms)로 키워 폴링 공백을 없앴다. Whisper 녹음용 스트림은 그대로 둬서 받아쓰기 품질에는 영향이 없다 |
+| 웨이크워드로 시작한 대화가 조용해져도 안 끝남 | "Jarvis"를 인식한 음성 인식 세션이 마이크를 완전히 놓기 전에 Whisper용 마이크를 새로 잡으려 했다. 그러면 화면에는 "녹음 중"으로 뜨지만 실제로는 오디오도 못 받고 종료 이벤트도 안 나는 상태로 멈춘다 | 웨이크워드 인식기가 진짜로 끝났다는 신호(`onend`, 보조로 400ms 타임아웃)를 받은 뒤에 Whisper 녹음을 시작하도록 순서를 바꿨다 |
+| 조용한 방이 아니면 대화가 안 끝남(생활 소음이 계속 "말하는 중"으로 잡힘) | 무음 판정 기준(floor)을 녹음 시작 300ms에 한 번만 재고 끝까지 고정해서 썼다. 그 뒤 주변 소음이 그보다 커지면 계속 "말하는 중"으로 잘못 분류된다 | 3초마다 그 구간의 최저값으로 floor를 다시 잡는다. 실제 목소리는 단어·숨 사이에 틈이 있어서 걸리지 않고, 꾸준한 생활 소음만 흡수된다 |
+| floor를 다시 잡아도 말이 끝난 뒤 녹음이 안 끝남 | 마이크 레벨을 analyser의 64개 주파수 빈 **전체**(초저음 웅웅거림부터 초고음 잡음까지)를 뭉뚱그려 평균 내서, 목소리와 배경 소음이 잘 구분되지 않았다 | 사람 목소리 대역(약 300Hz~3.4kHz)에 해당하는 빈만 골라 평균 내도록 바꿨다(`voiceLo`/`voiceHi`, `audioCtx.sampleRate`로 계산). 그 대역 밖 소음은 레벨 계산에서 빠진다 |
+| 목소리 대역 필터 이후, 조용해졌는데도 녹음 종료까지 10초 가까이 걸림 | 빈을 8개 정도로 줄여 평균 내다 보니 측정값 하나하나가 들쭉날쭉해졌다. "조용함" 1.2초 연속 판정이 잡음 튐에 계속 리셋되다가 우연히 겨우 성공하는 패턴이 됐다 | VAD 판정에 쓰는 값만 지수이동평균(EMA, 가중치 0.45)으로 살짝 평활화했다. 화면 비주얼라이저용 `S.micLevel`은 그대로 둬서 시각 효과에는 영향이 없다 |
+| 평활화 뒤에도 말이 끝난 뒤 정적이 계속 김 | 진폭(데시벨) 기준 VAD는 아무리 다듬어도 "말이 끝났다"를 소리 크기만으로 판단하는 방식 자체에 한계가 있다 | 브라우저 `SpeechRecognition`의 자체 음성 종료 감지(`onspeechend`)를 1차 신호로 쓴다. Whisper 녹음(MediaRecorder)과 별개로 글자는 쓰지 않는 보조 인식 세션을 하나 더 띄워서, `onspeechend`가 오면 바로 `stopWhisper()`한다. `onend`만으로는 멈추지 않는다(말을 시작하기도 전에 끊길 위험). 기존 진폭 VAD와 7초/20초 상한은 미지원 브라우저·실패 대비로 남겨 둔다 |
+| 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈추는 오래된 버그가 있다 | 답변을 짧은 조각(최대 80자, 마침표 없는 긴 문장은 단어 단위로 강제 분할)으로 쪼개 차례로 `speak()`하는 큐 방식으로 바꿨다. 처음엔 180자였는데, 한국어는 글자당 발음 시간이 길어서 여전히 끊겨 80자로 줄였다 |
+| 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 큐 방식으로 바꾼 뒤에도 마지막 조각의 `onend`가 가끔 아예 오지 않는다(Chrome 음성 이벤트의 신뢰성 문제) | 조각마다 글자 수로 예상한 재생 시간만큼 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 다음 단계로 넘어가게 했다 |
+| GitHub 연동 후 Vercel 배포가 `UNKNOWN` 상태로 몇 시간씩 안 끝남 | 처음엔 "Fix Git Configuration" 버튼만 보여서 원인을 알 수 없었다. CLI 배포와 git push 배포가 똑같이 막혔다. 실제 원인은 Vercel이 보낸 이메일로 알았다: 로컬 git의 커밋 작성자 이메일(`khchan04@naver.com`, 이 컴퓨터에 예전부터 전역 설정돼 있던 값)이 Vercel 팀의 어느 멤버와도 맞지 않아서 배포가 계속 보류됐다 | ① Vercel 계정에 GitHub 로그인 연결 ② GitHub에 Vercel 앱 설치(저장소 접근 권한, All repositories) ③ Vercel 프로젝트 Settings에서 **Root Directory 지정**(당시 `jarvis-vercel`, 지금은 `jarvischan-vercel`) ④ 이 저장소에 한해 `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`{id}+{username}@users.noreply.github.com`, id는 `gh api user`로 확인)로 맞춤. 넷 다 해야 풀린다 — 절차는 §5-3b |
+| 노트북(크롬)에선 말이 끝나면 바로 끊기는데 폰·패드에선 자동 종료가 거의 안 됨 | iOS Safari는 `onspeechend`(바로 위 항목의 해결책)가 아예 없거나, 있어도 이벤트가 오지 않는다. 로그에는 `endpointer unavailable`/`no browser endpointer`만 찍힌다. 그래서 진폭 기준 VAD에 전부 의존하게 되는데, 모바일에서는 `getUserMedia`의 `autoGainControl`이 배경 소음까지 키워서 "조용한 방 = 거의 0"이라는 VAD의 전제가 깨져 있었다 | Whisper 녹음 스트림도 `autoGainControl:false`로 열어 원래 음량을 그대로 읽는다. iOS에서는 어차피 못 쓰는 보조 `onspeechend` 세션을 만들지 않아서 마이크 경합 위험도 없앴다 |
+| 위 수정 후에도 아이패드에서 20초 상한까지 안 끊김(로그로 확인: floor가 0.1에 고정) | "조용함" 기준(floor)의 상한을 0.1로 박아 뒀다. 자동 게인이 켜져 있던 때는 조용한 방 음량이 늘 0.1 아래였지만, 끄고 나니 그 기기의 실제 주변 소음이 0.1보다 높아서 floor가 실제 값을 따라가지 못했다 | 상한을 0.7로 올렸다(안전장치일 뿐 목표값이 아니다) |
+| floor 상한을 올렸는데도 말이 끝나고 15초 넘게 지나서야 끊김(로그: floor가 3초마다 목표치에 절반씩만 다가감) | 3초 구간마다 "이전 floor 절반 + 이번 구간 최솟값 절반"으로만 보정해서, 실제 주변 소음값에 닿는 데 여러 구간(수십 초)이 걸렸다 | 구간을 1.2초로 줄였다가 다시 0.7초로 줄이고(`6f0745c`), 절반씩 섞는 대신 그 구간 최솟값으로 바로 맞춘다. "조용함" 확정 대기 시간도 1.2초에서 0.8초로 줄여 체감 지연을 더 줄였다 |
+| 웨이크워드 "자비스찬"을 또박또박 말해야만 인식되고, 켜 둔 지 좀 지나면 그마저도 잘 안 됨 | ① 정규식이 `자비스찬`/`jarvischan` 정확한 문자열만 찾았다. 사전에 없는 만든 이름이라 조금만 웅얼거려도 음성 인식이 비슷한 다른 음절로 받아 적으면 실패한다 ② 크롬의 연속(`continuous:true`) 인식 세션은 오래 켜 둘수록 인식 품질이 눈에 띄게 떨어진다(문서에 없는 특성) | 정규식을 구분하기 쉬운 핵심 부분(`자비스`/`jarvis`)만 찾도록 완화하고, `maxAlternatives:3`으로 1순위 말고 다른 후보들도 검사한다. 대기 세션은 15초마다 새 세션으로 교체한다 |
+| 스크린샷을 찍으면 화면 일부만 잘려서 담김 | PowerShell 프로세스가 기본적으로 DPI를 인식하지 않아서, 배율이 100%보다 큰 디스플레이(요즘 노트북 대부분)에서 .NET이 실제 해상도 대신 축소된 "논리 해상도"로 캡처한다(실측: 2560×1600 화면이 1707×1067로 보임) | 캡처 스크립트 시작 때 `user32.dll`의 `SetProcessDPIAware()`를 호출한다. 여러 모니터를 다 담으려고 `PrimaryScreen.Bounds` 대신 `SystemInformation.VirtualScreen`을 쓴다 |
+| (안전) 앱 닫기 명령이 저장 여부를 묻지 않고 바로 강제 종료함 | `taskkill /F`를 무조건 써서, 메모장·VS Code 등에 저장 안 한 내용이 있어도 그냥 날아갔다 | 기본은 `/F` 없이 정상 종료를 요청하고(앱이 저장 여부를 직접 물을 수 있게) 프로세스가 실제로 사라졌는지 확인한다. 강제 종료는 `force:true`를 명시적으로 받을 때만 하고, LLM은 사용자가 "강제로 꺼줘"라고 할 때만 그 값을 쓴다 |
+| 로컬 에이전트를 테스트한 뒤 사용자가 켜 둔 에이전트까지 꺼져서 페이지의 Local agent 연결이 끊김 (2026-09-25) | 테스트용 에이전트를 끄면서 명령줄에 `agent.js`가 들어간 node 프로세스를 전부 종료했다. `start-agent.bat`로 켠 진짜 에이전트도 같은 이름이라 같이 꺼졌다 | 테스트는 `JARVIS_AGENT_PORT=8799 node agent.js`처럼 **다른 포트**로 띄우고, 끌 때는 그 프로세스만 **PID로** 종료한다. 이름 패턴으로 한꺼번에 종료하지 않는다. 끊겼으면 `start-agent.bat`를 다시 실행한다 |
+| Git Bash에서 `vercel api /v9/projects/…`가 `Invalid arguments. Use an API path starting with /`로 실패 | Git Bash(MSYS)가 `/`로 시작하는 인자를 윈도우 경로(`C:/Program Files/Git/v9/…`)로 바꿔서 넘긴다 | 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙인다. 팀 프로젝트라 `?teamId=<.vercel/project.json의 orgId>`도 필요하다 |
 
 ---
 
-## 7. 다음 단계 (아직 구현 안 됨)
+## 7. 다음 단계
 
 | 단계 | 기능 | 필요한 것 |
 |---|---|---|
@@ -454,10 +458,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 3 | 오래 기억하기(Upstash Redis), 노션 저장·조회, 텔레그램 전송, 유튜브 성과 | 서비스별 무료 키 |
 | 4 | 구글 캘린더, Gmail 요약, 인스타그램 인사이트 | OAuth 설정 |
 | 5 | 노트북 앱 제어 — **2026-09-23 완료.** §9 참고 | 완료 |
-| 6 | 로컬 에이전트 맥 포팅(지금은 윈도우 전용 셸 명령) | 실제로 맥 쓰는 사람이 생기면 |
-| 7 | 폰/패드에서 노트북을 원격 제어 — 지금은 "localhost"가 각자 기기 자신을 가리켜서 물리적으로 불가능. 노트북의 LAN IP로 붙거나(브라우저 mixed-content 정책 때문에 인증서 필요) 서버를 거쳐 중계하는 방식으로 재설계해야 함 | 미정 |
+| 6 | 로컬 에이전트 맥 포팅(지금은 윈도우 전용 셸 명령) | 실제로 맥을 쓰는 사람이 생기면 |
+| 7 | 폰·패드에서 노트북을 원격 제어. 지금은 "localhost"가 각 기기 자신을 가리켜서 물리적으로 불가능하다. 노트북의 LAN IP로 붙거나(브라우저 mixed-content 정책 때문에 인증서 필요) 서버를 거쳐 중계하는 방식으로 다시 설계해야 한다 | 미정 |
 
-⚠️ **3단계 전에 로그인 방식을 바꿔야 해요.** 지금은 공용 비밀번호 하나라서, 비밀번호를 아는 사람은 누구나 연결된 노션·메일에 접근할 수 있어요. Vercel 로그인 보호를 켜거나 Google 로그인을 붙이세요.
+⚠️ **3단계 전에 로그인 방식을 바꿔야 한다.** 지금은 공용 비밀번호 하나라서, 비밀번호를 아는 사람은 누구나 연결된 노션·메일에 접근할 수 있다. Vercel 로그인 보호를 켜거나 Google 로그인을 붙인다.
 
 ---
 
@@ -465,11 +469,11 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### 지금 상태 (2026-09-25)
 
-- 배포: `https://jarvischan.vercel.app`, Vercel 프로젝트 `khchan04/jarvischan-vercel`(Root Directory `jarvischan-vercel`). `git push`하면 자동 배포(§5-3b)
-- 저장소: `https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스. README는 전부 한국어
-- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 9개), PWA 설치
+- 배포: `https://jarvischan.vercel.app`, Vercel 프로젝트 `khchan04/jarvischan-vercel`(Root Directory `jarvischan-vercel`). `git push`하면 자동 배포된다(§5-3b).
+- 저장소: `https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스. README는 전부 한국어.
+- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 9개), PWA 설치.
 - 포트폴리오: https://kheechan04.github.io/jarvischan/
-- 아래는 날짜순 진행 기록이에요. 옛 주소·옛 이름이 나오는 건 그때 기록이라서 그래요.
+- 아래는 날짜순 진행 기록이다. 옛 주소나 옛 이름이 나오는 건 그때 기록이라서다.
 
 ### 첫 배포 (2026-09-16)
 
@@ -478,63 +482,63 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - Groq 실패 대비와 모델 자동 선택: 가짜 Groq 응답으로 11가지 상황 시험 통과
 - HUD와 테마: 로컬 미리보기에서 대기·처리 중·대답 중 화면 확인, 콘솔 에러 없음
 - 한국어 지원: 음성 인식 서버 12가지 상황(가짜 Groq 응답), 한국어 대답 지시, 한글 도시 이름, 한국어 위키 시험 통과
-- **확인이 남은 것:** 실제 Groq 대화와 실제 한국어 음성 인식. 비밀번호가 필요해서 사용자 확인 필요(§5-6)
+- **남은 확인:** 실제 Groq 대화와 실제 한국어 음성 인식. 비밀번호가 필요해서 사용자가 확인해야 했다(§5-6)
 
 ### 업데이트 (2026-09-22)
 
 - 배포: `https://jarvis-vercel-blush.vercel.app`, Vercel 프로젝트 `khchan04/jarvis-vercel`
-- 실제 Groq 대화·한국어 음성 인식 사용자 확인 완료(§5-6 통과)
-- 박수 두 번 웨이크 감지 개선 — 원인과 해결은 위 §6 표 참고. 배포본에서 재확인 완료
-- 소스 저장소: `https://github.com/kheechan04/jarvis` (Private)
+- 실제 Groq 대화·한국어 음성 인식을 사용자가 확인했다(§5-6 통과).
+- 박수 두 번 웨이크 감지를 개선했다. 원인과 해결은 §6 표에 있고, 배포본에서 다시 확인했다.
+- 소스 저장소: `https://github.com/kheechan04/jarvis`(당시 Private)
 
-### 업데이트 (2026-09-23) — 새 기능 + 안정성 다지기
+### 업데이트 (2026-09-23) — 새 기능과 안정성 다지기
 
-**배포 방식이 바뀜:** GitHub 연동 완료, 이제 `git push`만 하면 자동 배포됨(§5-3b). 그날 겪은 "Vercel 배포가 계속 `UNKNOWN`으로 멈춤" 문제와 해결(Git 연동·GitHub 앱 설치·Root Directory·커밋 이메일)은 §6 표에 기록.
+**배포 방식이 바뀌었다.** GitHub 연동을 마쳐서 이제 `git push`만 하면 자동 배포된다(§5-3b). 그날 겪은 "Vercel 배포가 계속 `UNKNOWN`으로 멈춤" 문제와 해결(Git 연동·GitHub 앱 설치·Root Directory·커밋 이메일)은 §6 표에 적었다.
 
 **새 기능**
-- **웨이크워드**: "Jarvischan" / "자비스찬"이라고 부르면 박수나 버튼 없이 대화 시작. 브라우저 `SpeechRecognition`을 재사용, 대기 상태일 때만 동작
-- **이름 변경**: 앱 전체 이름을 Jarvis → **Jarvischan(자비스찬)**으로 변경 — 타이틀·헤더·웨이크워드·시스템 프롬프트까지 전부. 내부 저장소 키·환경변수 이름은 안 건드림
-- **대화 기억**: 탭이 열려있는 동안 최근 약 10턴을 기억(서버·클라이언트 둘 다 `slice(-20)`). 더 늘리면 응답이 느려져서 절충한 값
+- **웨이크워드**: "Jarvischan" / "자비스찬"이라고 부르면 박수나 버튼 없이 대화를 시작한다. 브라우저 `SpeechRecognition`을 재사용하고, 대기 상태일 때만 동작한다.
+- **이름 변경**: 앱 이름을 Jarvis → **Jarvischan(자비스찬)**으로 바꿨다. 탭 제목·헤더·웨이크워드·시스템 프롬프트까지 전부 바꿨고, 내부 저장 키·환경변수 이름은 건드리지 않았다.
+- **대화 기억**: 탭이 열려 있는 동안 최근 약 10턴을 기억한다(서버·클라이언트 모두 `slice(-20)`). 더 늘리면 응답이 느려져서 절충한 값이다.
 
-**안정성 수정 (모두 §6 표에 원인·해결 기록됨)**
+**안정성 수정** (원인과 해결은 모두 §6 표에 있다)
 - 박수 웨이크 인식 개선(전용 스트림 + fftSize 확대)
-- 웨이크워드→Whisper 마이크 핸드오프 경합 수정
-- 무음 감지(VAD) 3단계 개선 끝에 최종적으로 브라우저 자체 `onspeechend`로 교체 — 진폭 기준의 근본적 한계를 우회
+- 웨이크워드 → Whisper 마이크 넘겨주기 경합 수정
+- 무음 감지(VAD)를 세 번 개선한 끝에 브라우저 자체 `onspeechend`를 1차 신호로 바꿈 — 진폭 기준의 근본적 한계를 우회
 - 긴 답변에서 TTS가 중간에 끊기는 Chrome 버그 우회(문장 큐 분할, 80자 단위, 안전장치 타이머)
 
-**확인이 남은 것:** 사용자가 최신 배포본에서 웨이크워드·무음감지·TTS 안정성을 실사용으로 재확인 중(§5-6). 문제 재발하면 §6 표부터 확인.
+**남은 확인:** 사용자가 최신 배포본에서 웨이크워드·무음 감지·TTS 안정성을 실제로 쓰면서 다시 확인하는 중이었다(§5-6). 문제가 다시 생기면 §6 표부터 본다.
 
-### 업데이트 (2026-09-23b) — 모바일 안정화 + 로컬 에이전트로 "진짜 비서" 시작
+### 업데이트 (2026-09-23b) — 모바일 안정화와 로컬 에이전트
 
-**모바일(폰/패드)에서 재확인하다 나온 문제 3개, 전부 해결** — 노트북에선 문제없던 게 아이패드로 테스트하니 그대로 드러남. 증상·원인·해결은 전부 §6 표에 기록. 짧게:
-1. iOS엔 `onspeechend`가 아예 없어서 진폭 VAD로 전부 떠넘겨지는데, `autoGainControl`이 켜져 있어 그 VAD가 못 씀 → 꺼서 해결
-2. VAD의 "조용함" 기준 상한이 0.1로 박혀 있어서 AGC 끈 뒤 진짜 소음 레벨(그보다 높음)을 못 따라감 → 상한 상향
-3. 기준 재보정이 3초 창·절반씩 섞기라 너무 느림(15초+) → 1.2초 창·즉시 스냅으로 단축
+**모바일(폰·패드)에서 다시 확인하다 나온 문제 3개를 모두 해결했다.** 노트북에선 문제없던 것이 아이패드로 테스트하니 드러났다. 증상·원인·해결은 전부 §6 표에 있고, 짧게 정리하면 이렇다.
+1. iOS에는 `onspeechend`가 없어서 진폭 VAD에 전부 의존하는데, `autoGainControl`이 켜져 있어서 그 VAD가 제대로 동작하지 않았다 → 자동 게인을 껐다.
+2. VAD의 "조용함" 기준 상한이 0.1로 박혀 있어서, 자동 게인을 끈 뒤의 실제 소음 수준(그보다 높음)을 따라가지 못했다 → 상한을 올렸다.
+3. 기준 재보정이 3초 구간·절반씩 섞기라 너무 느렸다(15초 이상) → 짧은 구간(지금은 0.7초)·즉시 맞추기로 바꿨다.
 
-**웨이크워드 인식률도 같이 손봄**: 정규식을 핵심 음절만 매칭하도록 완화, 인식 후보 3개까지 검사, 대기 세션 15초마다 자동 교체(§6 표 참고).
+**웨이크워드 인식률도 같이 손봤다.** 정규식을 핵심 음절만 찾도록 완화하고, 인식 후보를 3개까지 검사하고, 대기 세션을 15초마다 새로 바꾼다(§6 표).
 
-**새 기능 — 로컬 에이전트 (노트북 앱 제어)**: 자세한 내용은 §9. Vercel 서버는 클라우드 함수라 사용자 컴퓨터에 절대 닿을 수 없다는 게 출발점 — 그래서 노트북에서 따로 실행하는 작은 동반 프로그램(`local-agent/`)을 만들고, 웹페이지가 `ws://localhost:8765`로 직접 붙어 LLM의 도구 호출을 거기로 중계하는 구조로 설계했다. 화이트리스트 방식(앱 열기·닫기, URL/파일/폴더 열기, 파일 검색, 화면 잠금, 스크린샷, 클립보드, 볼륨)만 지원하고 임의 명령 실행·삭제·종료/재시작은 의도적으로 뺐다.
+**새 기능 — 로컬 에이전트(노트북 앱 제어)**: 자세한 내용은 §9. Vercel 서버는 클라우드 함수라 사용자 컴퓨터에 닿을 수 없다는 게 출발점이다. 그래서 노트북에서 따로 실행하는 작은 동반 프로그램(`local-agent/`)을 만들고, 웹 페이지가 `ws://localhost:8765`로 직접 붙어서 LLM의 도구 호출을 그쪽으로 중계하는 구조로 설계했다. 허용 목록 방식(앱 열기·닫기, URL·파일·폴더 열기, 파일 검색, 화면 잠금, 스크린샷, 클립보드, 볼륨)만 지원하고, 임의 명령 실행·삭제·종료/재시작은 일부러 뺐다.
 
-**확인이 남은 것:** 없음 — 이번 라운드는 전부 실기기(아이패드) 로그로 원인을 확인하고, 로컬 에이전트도 실제 명령을 실행해 결과를 확인한 뒤 배포함.
+**남은 확인:** 없음. 이번에는 전부 실제 기기(아이패드) 로그로 원인을 확인했고, 로컬 에이전트도 실제 명령을 실행해 결과를 확인한 뒤 배포했다.
 
+### 업데이트 (2026-09-25) — 이름 정리(jarvis → jarvischan)와 공개
 
-### 업데이트 (2026-09-25) — 이름 정리 (jarvis → jarvischan)
-
-앱 이름은 이미 Jarvischan이었는데 저장소·프로젝트·폴더 이름에 옛 이름이 남아 있어서 한꺼번에 맞춤.
-- GitHub 저장소 `kheechan04/jarvis` → **`kheechan04/jarvischan`** (옛 주소는 GitHub이 자동으로 넘겨줌)
-- Vercel 프로젝트 `jarvis-vercel` → **`jarvischan-vercel`**, 폴더도 `jarvischan-vercel/`로 바꾸고 Vercel의 **Root Directory도 `jarvischan-vercel`**로 변경. **배포 주소도 `https://jarvischan.vercel.app`으로 변경** — 프로젝트 도메인에 추가하고, 옛 주소 `https://jarvis-vercel-blush.vercel.app`은 새 주소로 308 리다이렉트. 로컬 에이전트 Origin 허용 목록에 새 주소 추가(옛 주소도 남겨둠). 브라우저 저장값(`localStorage`·`sessionStorage`)은 주소(origin)별이라 새 주소에서 처음 열면 비밀번호·에이전트 토큰을 한 번 다시 입력해야 함
-- 이 가이드 파일 이름 `JARVIS_BUILD_GUIDE.md` → `JARVISCHAN_BUILD_GUIDE.md`, `package.json` 이름·README 문구·User-Agent·Whisper 힌트 문구·스크린샷 파일명도 jarvischan으로
-- 저장소 루트에 `Jarvischan 열기.html` 추가 — 더블클릭하면 `https://jarvischan.vercel.app`으로 바로 넘어가는 바로가기 페이지(Vercel Root Directory 밖이라 배포되진 않음)
-- **사용자 확인 완료**: 새 주소에서 비밀번호·토큰 재입력 후 로컬 에이전트 연결 정상. 서버 도구 7개 실제 API 시험 통과, 에이전트는 새 주소 인증·잘못된 Origin/토큰 거부까지 확인
-- **PWA 추가**: `manifest.webmanifest` + `icons/` + `index.html` `<head>`에 manifest·theme-color·apple-touch-icon 링크. 크롬 주소창의 **설치** 버튼으로 앱 설치, 아이폰·아이패드는 공유 → 홈 화면에 추가. service worker는 안 넣음 — 크롬이 더 이상 설치 조건으로 요구하지 않고, 캐시 때문에 배포 후 옛 화면이 뜨는 문제를 피하려고. 헤드리스 크롬 `Page.getInstallabilityErrors`로 설치 가능(오류 0개) 확인
-- **이름에서 "Core" 제거**: 탭 제목·헤더(`JARVISCHAN·CORE` → `JARVISCHAN`)·HUD 링 위 글씨(`J.A.R.V.I.S · CORE 000` → `JARVISCHAN · 000`)·PWA 앱 이름·README·가이드 제목·User-Agent를 모두 그냥 **Jarvischan**으로. 부팅 문구 "core online"처럼 시스템 상태를 말하는 core와 `data-core`·`#core` 같은 내부 이름은 그대로
-- **포트폴리오 페이지**: 이 프로젝트의 공개 기록은 `kheechan04/kheechan04.github.io` 저장소의 `jarvischan/`(https://kheechan04.github.io/jarvischan/, 상세는 `full.html`). 폴더를 `jarvis/`에서 옮겼고 옛 `/jarvis/` 주소는 없앰. 저장소·사이트 주소가 또 바뀌면 거기 "자료 출처" 표와 푸터 링크도 같이 고쳐야 함
-- **PWA 설치 확인 완료:** 사용자가 크롬에서 직접 설치해서 `Chrome 앱\Jarvischan`으로 등록된 것 확인(설치 가능 판정과 배포도 확인 완료). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 삭제
-- **저장소 Public 전환 + MIT 라이선스**: 전환 전에 커밋 기록 전체에서 API 키·비밀번호·`.env`·에이전트 토큰이 한 번도 커밋되지 않은 것, 커밋 이메일이 noreply인 것을 확인함. 비밀값은 계속 Vercel 환경변수에만 둘 것 — 이제 커밋하면 바로 공개됨
-- **로그인창 placeholder**: `••••••••`(점 8개)가 비밀번호 길이 힌트처럼 보여서 `Enter password` 글자로 바꿈. 입력 중에 찍히는 점은 브라우저 기본 동작이라 그대로
-- **GitHub 첫 화면 정리**: 저장소 루트에 `README.md`(소개·폴더 구성·직접 배포하는 법, 한국어) 추가, `jarvischan-vercel/README.md`에 저장소째 import하면 Root Directory를 `jarvischan-vercel`로 지정하라는 안내 추가. 저장소 설명·토픽·홈페이지(`https://jarvischan.vercel.app`, 옛 blush 주소였음)도 설정. 포트폴리오 페이지의 저장소 표기도 `(private)` → 공개·MIT로 바꾸고 링크 추가. 루트 README·LICENSE는 Root Directory 밖이라 배포되지 않음
-- **README 전부 한국어로**: 루트 README에 이어 `jarvischan-vercel/README.md`(부록도 동기화)와 `local-agent/README.md`도 한국어로 옮김. 명령 이름·파일 경로·화면에 뜨는 영어 버튼 이름(`Local agent`, `connecting…` 등)은 실제 표시와 맞추려고 그대로 둠
-- **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
+앱 이름은 이미 Jarvischan이었는데 저장소·프로젝트·폴더 이름에 옛 이름이 남아 있어서 한꺼번에 맞췄다.
+- GitHub 저장소 `kheechan04/jarvis` → **`kheechan04/jarvischan`**(옛 주소는 GitHub이 자동으로 넘겨준다).
+- Vercel 프로젝트 `jarvis-vercel` → **`jarvischan-vercel`**. 폴더도 `jarvischan-vercel/`로 바꾸고 Vercel의 **Root Directory도 `jarvischan-vercel`**로 바꿨다. **배포 주소도 `https://jarvischan.vercel.app`으로 바꿨다** — 프로젝트 도메인에 추가하고, 옛 주소 `https://jarvis-vercel-blush.vercel.app`은 새 주소로 308 리다이렉트한다. 로컬 에이전트 Origin 허용 목록에 새 주소를 추가했다(옛 주소도 남겨 둠). 브라우저 저장값(`localStorage`·`sessionStorage`)은 주소(origin)별이라, 새 주소에서 처음 열면 비밀번호와 에이전트 토큰을 한 번 다시 입력해야 한다.
+- 이 가이드 파일 이름 `JARVIS_BUILD_GUIDE.md` → `JARVISCHAN_BUILD_GUIDE.md`. `package.json` 이름·README 문구·User-Agent·Whisper 힌트 문구·스크린샷 파일명도 jarvischan으로 바꿨다.
+- 저장소 루트에 `Jarvischan 열기.html`을 추가했다. 더블클릭하면 `https://jarvischan.vercel.app`으로 바로 넘어가는 바로가기 페이지다(Vercel Root Directory 밖이라 배포되지 않는다).
+- **사용자 확인 완료**: 새 주소에서 비밀번호·토큰을 다시 입력한 뒤 로컬 에이전트 연결이 정상이다. 서버 도구 7개가 실제 API 시험을 통과했고, 에이전트는 새 주소 인증과 잘못된 Origin·토큰 거부까지 확인했다.
+- **PWA 추가**: `manifest.webmanifest` + `icons/` + `index.html` `<head>`에 manifest·theme-color·apple-touch-icon 링크. 크롬 주소창의 **설치** 버튼으로 앱을 설치하고, 아이폰·아이패드는 공유 → 홈 화면에 추가. service worker는 넣지 않았다 — 크롬이 더 이상 설치 조건으로 요구하지 않고, 캐시 때문에 배포 후 옛 화면이 뜨는 문제를 피하려고. 헤드리스 크롬 `Page.getInstallabilityErrors`로 설치 가능(오류 0개)을 확인했다.
+- **이름에서 "Core" 제거**: 탭 제목·헤더(`JARVISCHAN·CORE` → `JARVISCHAN`)·HUD 링 위 글씨(`J.A.R.V.I.S · CORE 000` → `JARVISCHAN · 000`)·PWA 앱 이름·README·가이드 제목·User-Agent를 모두 그냥 **Jarvischan**으로 바꿨다. 부팅 문구 "core online"처럼 시스템 상태를 말하는 core와 `data-core`·`#core` 같은 내부 이름은 그대로 뒀다.
+- **포트폴리오 페이지**: 이 프로젝트의 공개 기록은 `kheechan04/kheechan04.github.io` 저장소의 `jarvischan/`에 있다(https://kheechan04.github.io/jarvischan/, 상세는 `full.html`). 폴더를 `jarvis/`에서 옮겼고 옛 `/jarvis/` 주소는 없앴다. 저장소나 사이트 주소가 또 바뀌면 그 페이지의 "자료 출처" 표와 푸터 링크도 같이 고쳐야 한다.
+- **PWA 설치 확인 완료**: 사용자가 크롬에서 직접 설치해서 `Chrome 앱\Jarvischan`으로 등록된 것을 확인했다(설치 가능 판정과 배포도 확인). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 지웠다.
+- **저장소 Public 전환 + MIT 라이선스**: 전환 전에 커밋 기록 전체에서 API 키·비밀번호·`.env`·에이전트 토큰이 한 번도 커밋되지 않았고 커밋 이메일이 noreply인 것을 확인했다. 비밀값은 계속 Vercel 환경변수에만 둔다 — 이제 커밋하면 바로 공개된다.
+- **로그인창 placeholder**: `••••••••`(점 8개)가 비밀번호 길이 힌트처럼 보여서 `Enter password`라는 글자로 바꿨다. 입력할 때 찍히는 점은 브라우저 기본 동작이라 그대로 뒀다.
+- **GitHub 첫 화면 정리**: 저장소 루트에 `README.md`(소개·폴더 구성·직접 배포하는 법)를 추가하고, `jarvischan-vercel/README.md`에 저장소째 가져오면 Root Directory를 `jarvischan-vercel`로 지정하라는 안내를 넣었다. 저장소 설명·토픽·홈페이지(`https://jarvischan.vercel.app`, 전에는 옛 blush 주소였다)도 설정했다. 포트폴리오 페이지의 저장소 표기도 `(private)`에서 공개·MIT로 바꾸고 링크를 달았다. 루트 README와 LICENSE는 Root Directory 밖이라 배포되지 않는다.
+- **README 전부 한국어로**: 루트 README, `jarvischan-vercel/README.md`(부록도 동기화), `local-agent/README.md`를 한국어로 옮겼다. 명령 이름·파일 경로·화면에 뜨는 영어 버튼 이름(`Local agent`, `connecting…` 등)은 실제 화면과 맞추려고 그대로 뒀다.
+- **가이드 정리**: 코드와 어긋난 내용(에이전트 도구 개수, 요청 필드 `lang`·`localAgent`, "못 하는 일" 목록 등)을 바로잡고, §8 맨 위에 지금 상태 요약을 넣었다. 문체는 다른 저장소(shadow-mitts)의 개발 문서와 같은 "~한다" 평서체로 통일했다.
+- **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생긴다), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 찾아야 인식률이 나온다 — §6 표), 영화 속 JARVIS를 가리키는 주석.
 
 ---
 
@@ -542,51 +546,51 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### 왜 서버가 아니라 별도 프로그램인가
 
-`api/chat.js`의 기존 도구(날씨·환율 등)는 전부 Vercel 서버에서 직접 실행된다. 서버는 인터넷에 공개된 API만 부를 수 있는 **상태 없는 클라우드 함수**라서, 사용자의 노트북처럼 인터넷에 열려있지 않은 개인 기기에는 원천적으로 닿을 방법이 없다. 그래서 "앱을 열어줘" 같은 요청은 서버가 아니라 **사용자의 노트북에서 직접 실행되는 별도 프로그램**이 처리해야 한다 — 이게 `local-agent/` 폴더의 존재 이유다.
+`api/chat.js`의 기존 도구(날씨·환율 등)는 전부 Vercel 서버에서 실행된다. 서버는 인터넷에 공개된 API만 부를 수 있는 **상태 없는 클라우드 함수**라서, 사용자의 노트북처럼 인터넷에 열려 있지 않은 개인 기기에는 닿을 방법이 없다. 그래서 "앱 열어줘" 같은 요청은 서버가 아니라 **사용자의 노트북에서 직접 실행되는 별도 프로그램**이 처리해야 한다. 이게 `local-agent/` 폴더가 있는 이유다.
 
 ### 구조
 
 ```
 브라우저(index.html) ──ws://localhost:8765──▶ local-agent/agent.js ──▶ 실제 OS 명령
        ▲                                              │
-       └──────────── LLM 도구 호출 결과 중계 ◀────────┘
+       └──────────── 실행 결과 돌려주기 ◀──────────────┘
 ```
 
-1. 사용자가 `local-agent/`에서 `npm start`(또는 `start-agent.bat` 더블클릭)로 에이전트를 실행하면, 처음 한 번 페어링 토큰이 생성되고 콘솔에 출력된다.
-2. 브라우저에서 "Local agent" 버튼을 눌러 그 토큰을 입력하면 `ws://localhost:8765`로 웹소켓이 열린다. 크롬은 https 페이지에서 `localhost`로의 연결은 mixed-content 정책 예외로 허용해서 별도 인증서가 필요 없다.
-3. LLM이 `open_app` 같은 도구를 호출하면, `api/chat.js`는 실행하지 않고 `{type:"device", command:"open_app", args:{...}}` 형태의 액션만 만들어 브라우저로 돌려준다(타이머 도구와 같은 패턴).
-4. 브라우저는 그 액션을 웹소켓으로 에이전트에 전달하고, 에이전트가 실제로 실행한 뒤 결과(성공/실패)를 돌려준다. LLM의 말소리 답변은 이 실제 결과가 나오기 *전에* 생성되므로, 진짜 결과는 로그/배너/카드로 별도 표시된다.
+1. 사용자가 `local-agent/`에서 `npm start`(또는 `start-agent.bat` 더블클릭)로 에이전트를 실행하면, 처음 한 번 페어링 토큰이 만들어져 콘솔에 출력된다.
+2. 브라우저에서 "Local agent" 버튼을 눌러 그 토큰을 입력하면 `ws://localhost:8765`로 웹소켓이 열린다. 크롬은 https 페이지에서 `localhost`로 연결하는 것을 mixed-content 정책의 예외로 허용해서 따로 인증서가 필요 없다.
+3. LLM이 `open_app` 같은 도구를 호출하면, `api/chat.js`는 직접 실행하지 않고 `{type:"device", command:"open_app", args:{...}}` 형태의 액션만 만들어 브라우저로 돌려준다(타이머 도구와 같은 방식).
+4. 브라우저는 그 액션을 웹소켓으로 에이전트에 전달하고, 에이전트가 실제로 실행한 뒤 결과(성공/실패)를 돌려준다. LLM의 음성 답변은 이 실제 결과가 나오기 *전에* 만들어지므로, 진짜 결과는 로그·배너·카드로 따로 보여준다.
 
-### 보안 — 화이트리스트, 페어링 토큰, Origin 검사
+### 보안 — 허용 목록, 페어링 토큰, Origin 검사
 
-개인용 단일 사용자 도구로 설계했고, 세 겹으로 제한한다.
-- **화이트리스트만 실행**: `open_app`/`close_app`은 `apps.json`에 등록된 앱만, 나머지 명령도 정해진 안전한 동작만 — 임의 셸 명령 실행은 없음
-- **의도적으로 안 넣은 것**: 컴퓨터 종료/재시작/절전, 파일 삭제/이동, 임의 프로세스 강제종료, 포커스된 창에 텍스트 자동 입력. 음성 인식이 잘못 들었을 때 되돌리기 어렵거나 위험한 동작이라, 넣게 되면 별도 확인 절차부터 설계해야 함
-- **페어링 토큰**: 에이전트 첫 실행 시 무작위로 생성돼 `~/.jarvischan-agent/token.txt`에 저장. 브라우저는 이 토큰 없이는 어떤 명령도 못 보냄
-- **Origin 검사**: 배포된 Jarvischan 주소가 아닌 곳에서의 연결 시도는 핸드셰이크 단계에서 거부
+혼자 쓰는 개인 도구로 설계했고, 세 겹으로 제한한다.
+- **허용 목록만 실행**: `open_app`/`close_app`은 `apps.json`에 등록된 앱만 다루고, 나머지 명령도 정해진 안전한 동작만 한다. 임의 셸 명령 실행은 없다.
+- **일부러 안 넣은 것**: 컴퓨터 종료·재시작·절전, 파일 삭제·이동, 임의 프로세스 강제 종료, 포커스된 창에 글자 자동 입력. 음성 인식이 잘못 들었을 때 되돌리기 어렵거나 위험한 동작이라서, 넣으려면 별도 확인 절차부터 설계해야 한다.
+- **페어링 토큰**: 에이전트를 처음 실행할 때 무작위로 만들어져 `~/.jarvischan-agent/token.txt`에 저장된다. 브라우저는 이 토큰 없이는 어떤 명령도 보낼 수 없다.
+- **Origin 검사**: 배포된 Jarvischan 주소가 아닌 곳에서 오는 연결은 핸드셰이크 단계에서 거부한다.
 
-### 지원 명령
+### 지원 명령 (9개)
 
 | 명령 | 동작 | 비고 |
 |---|---|---|
-| `open_app` / `close_app` | `apps.json`에 등록된 앱 열기/닫기 | 닫기는 기본이 정상 종료(저장 프롬프트 존중), `force:true`일 때만 강제종료. `explorer`는 데스크톱 셸이라 닫기 자체가 항상 거부됨 |
+| `open_app` / `close_app` | `apps.json`에 등록된 앱 열기/닫기 | 닫기는 기본이 정상 종료(저장 확인 창을 존중), `force:true`일 때만 강제 종료. `explorer`는 바탕화면 셸이라 닫기가 항상 거부됨 |
 | `open_url` | 기본 브라우저로 URL 열기 | `http(s)://`만 허용 |
 | `open_path` | 파일/폴더 열기 | `desktop`/`downloads`/`documents`/`pictures`/`바탕화면`/`다운로드`/`문서` 같은 별칭 지원, 전체 경로도 가능 |
-| `find_files` | Desktop/Documents/Downloads에서 파일명 검색 | 읽기 전용, 최대 8개·깊이 5 |
+| `find_files` | 바탕화면·문서·다운로드에서 파일 이름 검색 | 읽기 전용, 최대 8개·깊이 5 |
 | `lock_screen` | 화면 잠금 | |
-| `take_screenshot`(에이전트 쪽 명령명은 `screenshot`) | 전체 화면 캡처 후 바탕화면에 저장 | DPI-aware 처리로 고배율 디스플레이에서도 전체 캡처(§6 표) |
-| `set_clipboard` | 클립보드에 텍스트 복사 | |
-| `adjust_volume` | 볼륨 올리기/내리기/음소거 | 실제 하드웨어 볼륨 키를 시뮬레이션 |
+| `take_screenshot`(에이전트 쪽 명령 이름은 `screenshot`) | 전체 화면을 캡처해 바탕화면에 저장 | DPI 처리로 고배율 디스플레이에서도 전체 캡처(§6 표) |
+| `set_clipboard` | 클립보드에 글자 복사 | |
+| `adjust_volume` | 볼륨 올리기/내리기/음소거 | 실제 볼륨 키를 누른 것처럼 동작 |
 
 ### 편의 기능
 
-- `start-agent.bat`: 더블클릭으로 실행(터미널 명령을 몰라도 됨)
-- `install-autostart.(ps1\|bat)` / `uninstall-autostart.(ps1\|bat)`: 윈도우 로그인 시 자동 실행되는 시작프로그램 바로가기를 추가/제거
-- 브라우저 쪽은 연결이 끊기면 5초 뒤 자동 재시도하고, 페이지를 다시 열 때 저장된 토큰으로 자동 접속 — 한 번 페어링하면 이후로는 버튼을 누를 일이 거의 없음
+- `start-agent.bat`: 더블클릭으로 실행한다(터미널 명령을 몰라도 된다).
+- `install-autostart.(ps1\|bat)` / `uninstall-autostart.(ps1\|bat)`: 윈도우 로그인 때 자동 실행되는 시작프로그램 바로가기를 추가/제거한다.
+- 브라우저 쪽은 연결이 끊기면 5초 뒤 자동으로 다시 시도하고, 페이지를 다시 열면 저장된 토큰으로 자동 접속한다. 한 번 페어링하면 그 뒤로는 버튼을 누를 일이 거의 없다.
 
 ### 다른 사람이 쓰려면
 
-같은 컴퓨터를 같이 쓰는 사람은 같은 토큰(`~/.jarvischan-agent/token.txt`)을 그대로 쓰면 된다. 자기 컴퓨터에서 쓰려는 사람은 `local-agent/` 폴더를 통째로 복사해서(zip 등으로 전달), Node.js 설치 후 그 폴더에서 `npm install` 한 번, 이후로는 `start-agent.bat`만 실행하면 된다 — 각자 자기 컴퓨터의 에이전트에만 페어링되고, 서로의 컴퓨터는 건드릴 수 없다. 상세 사용법은 `local-agent/README.md`. **지금은 윈도우 전용**(`start`/`explorer`/`taskkill`/`rundll32` 사용) — 맥에선 포팅이 필요하다(§7 표).
+같은 컴퓨터를 같이 쓰는 사람은 같은 토큰(`~/.jarvischan-agent/token.txt`)을 그대로 쓰면 된다. 자기 컴퓨터에서 쓰려는 사람은 `local-agent/` 폴더를 통째로 복사해서(zip 등으로 전달), Node.js를 설치하고 그 폴더에서 `npm install`을 한 번 한 뒤 `start-agent.bat`만 실행하면 된다. 각자 자기 컴퓨터의 에이전트에만 페어링되고, 서로의 컴퓨터는 건드릴 수 없다. 자세한 사용법은 `local-agent/README.md`. **지금은 윈도우 전용**(`start`/`explorer`/`taskkill`/`rundll32` 사용)이라 맥에선 포팅이 필요하다(§7 표).
 
 ---
 
