@@ -438,6 +438,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 웨이크워드 "자비스찬"을 또박또박 말해야만 인식되고, 켜놓은 지 좀 지나면 그마저도 잘 안 됨 | ① 정규식이 `자비스찬`/`jarvischan` 정확한 문자열만 매칭 — 사전에 없는 만든 이름이라 조금만 웅얼거려도 ASR이 비슷한 다른 음절로 잘못 받아적으면 매칭 실패 ② 크롬의 연속(`continuous:true`) 인식 세션은 오래 켜둘수록 인식 품질이 눈에 띄게 떨어짐(문서화되지 않은 특성) | 정규식을 구분하기 쉬운 핵심 부분(`자비스`/`jarvis`)만 매칭하도록 완화하고 `maxAlternatives:3`으로 1순위 후보 말고 대안들도 검사. 대기 세션을 15초마다 강제로 새 세션으로 교체 |
 | 스크린샷을 찍으면 화면 일부만 잘려서 담김 | PowerShell 프로세스가 기본적으로 DPI-aware가 아니어서, 배율 100% 초과 디스플레이(요즘 노트북 대부분)에서 .NET이 실제 해상도 대신 축소된 "논리 해상도"를 기준으로 캡처함(실측: 2560×1600 화면이 1707×1067로 보임) | 캡처 스크립트 시작 시 `user32.dll`의 `SetProcessDPIAware()`를 호출. 여러 모니터를 다 담기 위해 `PrimaryScreen.Bounds` 대신 `SystemInformation.VirtualScreen` 사용 |
 | (안전) 앱 닫기 명령이 저장 여부 안 묻고 바로 강제종료 | `taskkill /F`를 무조건 사용 — 메모장·VS Code 등에 저장 안 한 내용이 있어도 그냥 날아감 | 기본은 `/F` 없이 정상 종료 요청(앱이 저장 여부를 직접 물어볼 수 있게) 후 실제로 프로세스가 사라졌는지 확인. 강제종료는 `force:true`를 명시적으로 받을 때만, 사용자가 "강제로 꺼줘"라고 말할 때만 LLM이 그 값을 씀 |
+| 로컬 에이전트를 테스트한 뒤 사용자가 켜 둔 에이전트까지 꺼져서 페이지의 Local agent 연결이 끊김 (2026-09-25) | 테스트용 에이전트를 끄면서 명령줄에 `agent.js`가 들어간 node 프로세스를 전부 종료함 — `start-agent.bat`로 켠 진짜 에이전트도 같은 이름이라 같이 꺼짐 | 테스트는 `JARVIS_AGENT_PORT=8799 node agent.js`처럼 **다른 포트**로 띄우고, 끌 때는 그 프로세스만 **PID로** 종료. 이름 패턴으로 한꺼번에 죽이지 않기. 끊겼으면 `start-agent.bat`를 다시 실행 |
+| Git Bash에서 `vercel api /v9/projects/…`가 `Invalid arguments. Use an API path starting with /`로 실패 | Git Bash(MSYS)가 `/`로 시작하는 인자를 윈도우 경로(`C:/Program Files/Git/v9/…`)로 바꿔서 넘김 | 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙임. 팀 프로젝트라 `?teamId=<.vercel/project.json의 orgId>`도 필요 |
 
 ---
 
@@ -509,6 +511,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - GitHub 저장소 `kheechan04/jarvis` → **`kheechan04/jarvischan`** (옛 주소는 GitHub이 자동으로 넘겨줌)
 - Vercel 프로젝트 `jarvis-vercel` → **`jarvischan-vercel`**, 폴더도 `jarvischan-vercel/`로 바꾸고 Vercel의 **Root Directory도 `jarvischan-vercel`**로 변경. **배포 주소도 `https://jarvischan.vercel.app`으로 변경** — 프로젝트 도메인에 추가하고, 옛 주소 `https://jarvis-vercel-blush.vercel.app`은 새 주소로 308 리다이렉트. 로컬 에이전트 Origin 허용 목록에 새 주소 추가(옛 주소도 남겨둠). 브라우저 저장값(`localStorage`·`sessionStorage`)은 주소(origin)별이라 새 주소에서 처음 열면 비밀번호·에이전트 토큰을 한 번 다시 입력해야 함
 - 이 가이드 파일 이름 `JARVIS_BUILD_GUIDE.md` → `JARVISCHAN_BUILD_GUIDE.md`, `package.json` 이름·README 문구·User-Agent·Whisper 힌트 문구·스크린샷 파일명도 jarvischan으로
+- 저장소 루트에 `Jarvischan 열기.html` 추가 — 더블클릭하면 `https://jarvischan.vercel.app`으로 바로 넘어가는 바로가기 페이지(Vercel Root Directory 밖이라 배포되진 않음)
+- **사용자 확인 완료**: 새 주소에서 비밀번호·토큰 재입력 후 로컬 에이전트 연결 정상. 서버 도구 7개 실제 API 시험 통과, 에이전트는 새 주소 인증·잘못된 Origin/토큰 거부까지 확인
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
 ---
