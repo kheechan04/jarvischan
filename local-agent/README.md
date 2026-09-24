@@ -1,30 +1,29 @@
-# Jarvischan local agent
+# Jarvischan 로컬 에이전트
 
-A small companion program you run on your own computer so the
-[Jarvischan](https://jarvischan.vercel.app) web page can open apps,
-URLs and files **on that computer**. Jarvischan itself runs on Vercel, which
-is a stateless cloud function with no route to your machine — this agent is
-what makes "open Chrome" / "close Notepad" / "lock my screen" actually work.
+[Jarvischan](https://jarvischan.vercel.app) 웹 페이지가 **내 컴퓨터에서** 앱·웹
+주소·파일을 열 수 있게 해주는 작은 동반 프로그램이에요. Jarvischan 본체는
+Vercel에서 돌아가는 상태 없는 클라우드 함수라서 내 컴퓨터에 닿을 방법이 없어요.
+"크롬 열어줘" / "메모장 닫아줘" / "화면 잠가줘"가 실제로 되게 해주는 게 이
+에이전트예요.
 
-**Windows only right now.** It uses Windows-specific commands (`start`,
-`explorer`, `taskkill`, `rundll32`) under the hood.
+**지금은 윈도우 전용이에요.** 내부적으로 윈도우 전용 명령(`start`,
+`explorer`, `taskkill`, `rundll32`)을 써요.
 
-Runs entirely on your machine, talks to nothing but the Jarvischan page
-(checked by a pairing token and an origin check — see **Security** below).
+전부 내 컴퓨터 안에서만 돌아가고, Jarvischan 페이지 말고는 아무와도 통신하지
+않아요(페어링 토큰과 Origin 확인으로 검사해요 — 아래 **보안** 참고).
 
-## Setup (once)
+## 준비 (한 번만)
 
-1. Install [Node.js](https://nodejs.org) if you don't have it (any recent
-   LTS version works).
-2. Open a terminal in this folder and run:
+1. [Node.js](https://nodejs.org)가 없으면 설치해요(최근 LTS 버전이면 뭐든 돼요).
+2. 이 폴더에서 터미널을 열고 실행해요:
    ```
    npm install
    ```
 
-## Running it
+## 실행하기
 
-Double-click **`start-agent.bat`**. A terminal window opens and prints a
-pairing token, e.g.:
+**`start-agent.bat`**을 더블클릭하세요. 터미널 창이 열리고 페어링 토큰이
+이렇게 출력돼요:
 
 ```
 Jarvischan local agent
@@ -33,89 +32,84 @@ Pairing token (paste into the Jarvischan page once):
 Listening on ws://localhost:8765
 ```
 
-Keep that window open — closing it stops the agent. (`npm start` from a
-terminal does the same thing, if you'd rather not use the .bat file.)
+이 창은 열어두세요 — 닫으면 에이전트가 꺼져요. (.bat 파일 대신 터미널에서
+`npm start`를 실행해도 똑같아요.)
 
-## Pairing the web page (once)
+## 웹 페이지와 페어링하기 (한 번만)
 
-On the Jarvischan page, click the **"Local agent"** button (bottom toolbar,
-next to the wake-word button). It'll ask for the token — paste the one from
-the terminal. Once paired, the browser remembers it: the page auto-connects
-on every future visit, and auto-reconnects if the agent restarts. You won't
-need to do this again unless you re-pair with a different token.
+Jarvischan 페이지에서 **"Local agent"** 버튼(아래쪽 도구 모음, 웨이크워드 버튼
+옆)을 누르세요. 토큰을 물어보면 터미널에 나온 토큰을 붙여넣어요. 한 번 페어링하면
+브라우저가 기억해서, 다음부터는 페이지를 열 때마다 자동으로 연결되고 에이전트가
+다시 시작돼도 자동으로 다시 붙어요. 다른 토큰으로 새로 페어링하는 게 아니면 이
+과정을 다시 할 필요가 없어요.
 
-The token is also saved to `~/.jarvischan-agent/token.txt` if you need it
-again later without restarting the agent.
+토큰은 `~/.jarvischan-agent/token.txt`에도 저장되니까, 나중에 에이전트를 다시
+시작하지 않고 토큰이 필요할 때 거기서 보면 돼요.
 
-## Run it automatically at login (optional)
+## 로그인할 때 자동 실행 (선택)
 
-Double-click **`install-autostart.bat`**. It adds a shortcut to your Windows
-Startup folder so the agent launches (minimized) every time you log in — no
-need to remember to start it by hand. Run **`uninstall-autostart.bat`** to
-remove it.
+**`install-autostart.bat`**을 더블클릭하세요. 윈도우 시작프로그램 폴더에
+바로가기를 추가해서, 로그인할 때마다 에이전트가 (최소화된 채로) 자동으로 켜져요.
+직접 켜는 걸 잊을 일이 없어요. 없애려면 **`uninstall-autostart.bat`**을
+실행하세요.
 
-## What it can do
+## 할 수 있는 것
 
-| Say (roughly) | Command | Notes |
+| 이렇게 말하면 (대략) | 명령 | 참고 |
 |---|---|---|
-| "open Chrome" / "크롬 열어줘" | `open_app` | Only apps listed in `apps.json` |
-| "close Notepad" / "메모장 닫아줘" | `close_app` | Tries a normal close first (lets the app prompt to save); force-closes only if you explicitly say so |
-| "open youtube.com" | `open_url` | `http(s)://` only |
-| "open my downloads folder" | `open_path` | Accepts `desktop`/`downloads`/`documents`/`pictures` (and their Korean names) or a full path |
-| "find the file called X" | `find_files` | Read-only search under Desktop/Documents/Downloads |
-| "lock my screen" | `lock_screen` | |
-| "take a screenshot" | `take_screenshot` | Saved to your Desktop |
-| "copy this to my clipboard" | `set_clipboard` | |
-| "turn the volume down" | `adjust_volume` | Simulates the hardware volume keys |
+| "크롬 열어줘" / "open Chrome" | `open_app` | `apps.json`에 있는 앱만 |
+| "메모장 닫아줘" / "close Notepad" | `close_app` | 먼저 일반 종료를 시도해요(저장할지 묻는 창이 뜰 수 있게). 강제 종료는 직접 그렇게 말했을 때만 |
+| "youtube.com 열어줘" | `open_url` | `http(s)://` 주소만 |
+| "다운로드 폴더 열어줘" | `open_path` | `desktop`/`downloads`/`documents`/`pictures`(한국어 이름도 됨) 또는 전체 경로 |
+| "X라는 파일 찾아줘" | `find_files` | 바탕화면·문서·다운로드 안에서 읽기 전용으로 검색 |
+| "화면 잠가줘" | `lock_screen` | |
+| "스크린샷 찍어줘" | `take_screenshot` | 바탕화면에 저장 |
+| "이거 클립보드에 복사해줘" | `set_clipboard` | |
+| "볼륨 줄여줘" | `adjust_volume` | 키보드의 볼륨 키를 누른 것처럼 동작 |
 
-## Adding more apps
+## 앱 추가하기
 
-Edit `apps.json`. Each entry is:
+`apps.json`을 고치세요. 항목 하나는 이렇게 생겼어요:
 
 ```json
-"friendly name": { "open": "shell command to launch it", "process": "processname.exe" }
+"부를 이름": { "open": "실행할 셸 명령", "process": "프로세스이름.exe" }
 ```
 
-`process` is optional — you only need it if you also want `close_app` to
-work for that app. `explorer` is permanently blocked from being closed (it's
-the Windows desktop shell, not just a file browser window — killing it takes
-down the taskbar too).
+`process`는 선택이에요 — 그 앱을 `close_app`으로 닫고 싶을 때만 필요해요.
+`explorer`는 닫을 수 없게 영구히 막혀 있어요(파일 탐색기 창 하나가 아니라
+윈도우 바탕화면 셸 자체라서, 종료하면 작업 표시줄까지 같이 사라져요).
 
-## Security
+## 보안
 
-This is a personal, single-user tool, not a hardened multi-tenant service.
+여러 사람이 쓰는 튼튼한 서비스가 아니라, 혼자 쓰는 개인 도구예요.
 
-- **Allow-list only.** No arbitrary shell command execution, no file
-  delete/move, no shutdown/restart/sleep, no simulated keyboard typing.
-  `open_app`/`close_app` only work on apps you've explicitly added to
-  `apps.json`.
-- **Pairing token.** Generated once on first run, stored in
-  `~/.jarvischan-agent/token.txt`. No command is accepted without it.
-- **Origin check.** Only WebSocket connections from the Jarvischan page's own
-  URL are accepted — anything else is rejected at the handshake, before
-  authentication is even checked.
+- **허용 목록만 실행.** 임의의 셸 명령 실행, 파일 삭제·이동, 종료·재시작·절전,
+  키보드 입력 흉내는 전부 없어요. `open_app`/`close_app`은 `apps.json`에 직접
+  넣은 앱에만 동작해요.
+- **페어링 토큰.** 처음 실행할 때 한 번 만들어져서
+  `~/.jarvischan-agent/token.txt`에 저장돼요. 토큰 없이는 어떤 명령도 받지 않아요.
+- **Origin 확인.** Jarvischan 페이지 주소에서 온 WebSocket 연결만 받아요 — 그 밖의
+  연결은 인증을 확인하기도 전에 연결 단계에서 거절돼요.
 
-## Sharing this with someone else
+## 다른 사람과 같이 쓰기
 
-If someone else uses the **same computer**, they can just use the same
-token — it's tied to the machine, not to a person.
+**같은 컴퓨터**를 쓰는 사람은 같은 토큰을 그대로 쓰면 돼요 — 토큰은 사람이 아니라
+컴퓨터에 묶여 있어요.
 
-If someone wants this to work **on their own computer**, they need their own
-copy: copy this whole `local-agent/` folder to their machine (a zip is
-fine — `node_modules` doesn't need to come along, `npm install` rebuilds
-it), install Node.js, run `npm install`, then `start-agent.bat`. Their
-agent generates its own token, independent of yours — each person's
-browser only ever talks to their own computer's agent.
+**자기 컴퓨터에서** 쓰고 싶은 사람은 따로 복사본이 필요해요. 이 `local-agent/`
+폴더를 통째로 그 컴퓨터에 복사하고(zip도 괜찮아요 — `node_modules`는 `npm
+install`이 다시 만들어주니까 안 가져가도 돼요), Node.js를 설치하고, `npm
+install`을 실행한 다음 `start-agent.bat`을 실행하면 돼요. 그 에이전트는 내 것과
+상관없는 자기 토큰을 만들어요 — 각자의 브라우저는 자기 컴퓨터의 에이전트하고만
+통신해요.
 
-## Troubleshooting
+## 문제 해결
 
-- **Button stuck on "connecting…"**: the pairing token doesn't match what's
-  in `~/.jarvischan-agent/token.txt` (often because the agent was restarted
-  and generated a new one). Click the button again — a bad token now resets
-  the button back to "off" automatically, so the next click prompts for a
-  fresh one.
-- **"local agent not connected" when trying a command**: the agent isn't
-  running, or the port (8765 by default) is blocked. Check the terminal
-  window is still open.
-- **Port already in use**: another copy of the agent is already running.
-  Only one instance can run at a time per computer.
+- **버튼이 "connecting…"에서 멈춤**: 페어링 토큰이
+  `~/.jarvischan-agent/token.txt`의 값과 달라요(에이전트가 다시 시작되면서 새
+  토큰을 만든 경우가 많아요). 버튼을 다시 누르세요 — 토큰이 틀리면 버튼이 자동으로
+  "off"로 돌아가서, 다시 누르면 새 토큰을 물어봐요.
+- **명령할 때 "local agent not connected"**: 에이전트가 꺼져 있거나 포트(기본
+  8765)가 막혀 있어요. 터미널 창이 아직 열려 있는지 확인하세요.
+- **Port already in use (포트가 이미 사용 중)**: 에이전트가 이미 하나 실행 중이에요.
+  컴퓨터 한 대에서 하나만 실행할 수 있어요.
