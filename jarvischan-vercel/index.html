@@ -1621,7 +1621,7 @@
       const raw=S.micLevel, t=Date.now()-t0;
       // Reading only the voice-band bins (see startMicMeter) makes each single
       // reading noisier (fewer bins averaged), which kept re-triggering "still
-      // loud" on stray spikes and made the 1.2s quiet timer take many retries
+      // loud" on stray spikes and made the quiet timer take many retries
       // to land — so the VAD works off a lightly smoothed level, not the raw one.
       sm = sm<0 ? raw : sm*0.55+raw*0.45;
       const lv=sm;
@@ -1636,7 +1636,8 @@
       // against a runaway reading, not because ambient is expected to get there.
       if(!floorReady){ floor=Math.min(0.7, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
       if(lv<winMin) winMin=lv;
-      // 1.2s windows, floor snapping straight to that window's minimum (no more
+      // 700ms windows (first cut to 1.2s, then trimmed further to keep pace with a
+      // laptop's browser endpointer), floor snapping straight to that window's minimum (no more
       // blending half the old floor in): confirmed live that blending made floor
       // climb toward a noisier-than-expected real ambient at half the gap per
       // 3s window, so on one iPad it took 5-6 windows (15s+) to become reachable

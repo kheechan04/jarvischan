@@ -537,7 +537,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **로그인창 placeholder**: `••••••••`(점 8개)가 비밀번호 길이 힌트처럼 보여서 `Enter password`라는 글자로 바꿨다. 입력할 때 찍히는 점은 브라우저 기본 동작이라 그대로 뒀다.
 - **GitHub 첫 화면 정리**: 저장소 루트에 `README.md`(소개·폴더 구성·직접 배포하는 법)를 추가하고, `jarvischan-vercel/README.md`에 저장소째 가져오면 Root Directory를 `jarvischan-vercel`로 지정하라는 안내를 넣었다. 저장소 설명·토픽·홈페이지(`https://jarvischan.vercel.app`, 전에는 옛 blush 주소였다)도 설정했다. 포트폴리오 페이지의 저장소 표기도 `(private)`에서 공개·MIT로 바꾸고 링크를 달았다. 루트 README와 LICENSE는 Root Directory 밖이라 배포되지 않는다.
 - **README 전부 한국어로**: 루트 README, `jarvischan-vercel/README.md`(부록도 동기화), `local-agent/README.md`를 한국어로 옮겼다. 명령 이름·파일 경로·화면에 뜨는 영어 버튼 이름(`Local agent`, `connecting…` 등)은 실제 화면과 맞추려고 그대로 뒀다.
-- **가이드 정리**: 코드와 어긋난 내용(에이전트 도구 개수, 요청 필드 `lang`·`localAgent`, "못 하는 일" 목록 등)을 바로잡고, §8 맨 위에 지금 상태 요약을 넣었다. 문체는 다른 저장소(shadow-mitts)의 개발 문서와 같은 "~한다" 평서체로 통일했다.
+- **가이드 정리**: 코드와 어긋난 내용(에이전트 도구 개수, 요청 필드 `lang`·`localAgent`, "못 하는 일" 목록 등)을 바로잡고, §8 맨 위에 지금 상태 요약을 넣었다. 문체는 다른 저장소(shadow-mitts)의 개발 문서와 같은 "~한다" 평서체로 통일했다. 그러면서 VAD 기준 재보정 간격이 문서·코드 주석에 1.2초로 남아 있던 것(실제로는 `6f0745c`부터 0.7초)도 바로잡았다.
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생긴다), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 찾아야 인식률이 나온다 — §6 표), 영화 속 JARVIS를 가리키는 주석.
 
 ---
@@ -600,7 +600,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 104,556 bytes | `4ae2de82a09e5e87…` |
+| `index.html` | 104,651 bytes | `a6daf66b1f5a77d6…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -610,7 +610,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=4ae2de82a09e5e87e698127aa1199a27d8fe10ad7efb5023b16799e384fc5241 -->
+<!-- FILE: index.html sha256=a6daf66b1f5a77d602db7d22288a4fa64f382b57bb611c25296c25ef3aa77536 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -2235,7 +2235,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       const raw=S.micLevel, t=Date.now()-t0;
       // Reading only the voice-band bins (see startMicMeter) makes each single
       // reading noisier (fewer bins averaged), which kept re-triggering "still
-      // loud" on stray spikes and made the 1.2s quiet timer take many retries
+      // loud" on stray spikes and made the quiet timer take many retries
       // to land — so the VAD works off a lightly smoothed level, not the raw one.
       sm = sm<0 ? raw : sm*0.55+raw*0.45;
       const lv=sm;
@@ -2250,7 +2250,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // against a runaway reading, not because ambient is expected to get there.
       if(!floorReady){ floor=Math.min(0.7, floorN?floorSum/floorN:0.04); floorReady=true; winStart=t; }
       if(lv<winMin) winMin=lv;
-      // 1.2s windows, floor snapping straight to that window's minimum (no more
+      // 700ms windows (first cut to 1.2s, then trimmed further to keep pace with a
+      // laptop's browser endpointer), floor snapping straight to that window's minimum (no more
       // blending half the old floor in): confirmed live that blending made floor
       // climb toward a noisier-than-expected real ambient at half the gap per
       // 3s window, so on one iPad it took 5-6 windows (15s+) to become reachable
