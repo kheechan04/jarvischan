@@ -1,6 +1,6 @@
 # Jarvischan 빌드 가이드
 
-음성으로 말하면 대답하고, 실제 도구(날씨·대기질·환율·위키·공휴일·헤드라인·타이머)를 쓰는 영화 스타일 음성 비서를 Vercel에 배포하는 가이드예요. 2026-09-16 기준 배포본(`https://jarvis-vercel-beta.vercel.app`)과 똑같은 결과물을 만들 수 있어요.
+음성으로 말하면 대답하고, 실제 도구(날씨·대기질·환율·위키·공휴일·헤드라인·타이머)를 쓰고, 로컬 에이전트로 내 컴퓨터의 앱까지 여는 영화 스타일 음성 비서를 Vercel에 배포하는 가이드예요. 지금 배포본(`https://jarvischan.vercel.app`)과 똑같은 결과물을 만들 수 있어요.
 
 이 문서 하나에 명세, 구현 순서, 그동안 겪은 함정, 테스트 방법, 그리고 **파일 원본 전체**(맨 아래 부록)가 들어 있어요.
 
@@ -38,7 +38,7 @@
 ```
 jarvischan-vercel/
 ├── index.html      # 화면 전체: HUD 캔버스, 음성, 대화, 결과 카드, 타이머, 테마 (빌드 과정 없음)
-├── api/chat.js     # Vercel Node 서버 함수: 비밀번호 확인, Groq 도구 호출 루프, 도구 7개 + 로컬 에이전트 도구 8개(§9)
+├── api/chat.js     # Vercel Node 서버 함수: 비밀번호 확인, Groq 도구 호출 루프, 도구 7개 + 로컬 에이전트 도구 9개(§9)
 ├── api/transcribe.js # Vercel Node 서버 함수: 녹음 → Groq Whisper 받아쓰기(한국어·영어 감지)
 ├── manifest.webmanifest # PWA 설치 정보(이름·아이콘·standalone) — 크롬 '설치' 버튼, iOS 홈 화면 추가
 ├── icons/          # PWA 아이콘 PNG 4개(192·512·maskable 512·apple-touch 180) — 바이너리라 부록에 없음, 저장소에 직접 있음
@@ -69,7 +69,7 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
      ├─ "system check"  → 브라우저에서 바로 점검 (서버 안 거침)
      ├─ "what can you do" → 기능 카드 먼저 표시, 이어서 두뇌에게도 질문
      │
-     └─ POST /api/chat  {password, messages, tz}
+     └─ POST /api/chat  {password, messages, tz, lang, localAgent}
             │
             ▼
 [Vercel 함수 api/chat.js]
@@ -93,13 +93,14 @@ local-agent/         # Vercel과 별개로 사용자 컴퓨터에서 직접 실�
 **요청:** `POST /api/chat`
 
 ```json
-{ "password": "…", "messages": [{"role":"user","content":"100 dollars in won"}], "tz": "Asia/Seoul" }
+{ "password": "…", "messages": [{"role":"user","content":"100 dollars in won"}], "tz": "Asia/Seoul", "lang": "auto", "localAgent": false }
 ```
 
 - `ping: true`만 보내면 비밀번호만 확인하고 `{ok:true}`를 돌려줘요. 비밀번호 화면에서 써요.
 - `messages`는 `user`와 `assistant` 역할만 받아요(최근 20개 = 약 10턴, 각 2,000자까지 — 기억 범위와 응답 속도 사이의 절충값. 기록이 많을수록 매번 보내는 프롬프트가 커져서 응답이 느려짐). `system`이나 `tool` 역할은 서버가 버려요.
 - `tz`는 현재 시각을 알려주는 데 써요. 기본값은 `Asia/Seoul`이에요.
 - `lang`(auto·ko·en): ko나 en이면 그 언어로만 대답하고, auto면 사용자가 쓴 언어로 대답해요.
+- `localAgent`: 로컬 에이전트가 지금 연결돼 있으면 `true`예요. 이때만 컴퓨터 조작 도구 9개(§9)를 모델에 넘겨요.
 
 **응답 (200)**
 
@@ -198,7 +199,7 @@ PREFERRED = openai/gpt-oss-120b → llama-3.3-70b-versatile → openai/gpt-oss-2
 - 대답은 소리 내어 읽으므로 1~3문장, 목록·마크다운·이모지 금지
 - 사용자가 쓴 언어로 대답: 한국어는 해요체에 숫자는 아라비아 숫자+단위(25도, 13만 5천 원), 영어는 숫자를 단어로
 - 도구 인수는 영어로(도시는 로마자, 통화는 ISO 코드). 위키만 한국어 사용자에게 ko판을 써요
-- **할 수 있는 일**과 **아직 못 하는 일**(웹 검색·메일·캘린더·노션·SNS·파일·장기 기억)을 명시
+- **할 수 있는 일**과 **아직 못 하는 일**(웹 검색·메일·캘린더·노션·SNS·장기 기억)을 명시. 앱·파일 열기 같은 컴퓨터 조작은 로컬 에이전트가 연결돼 있을 때만 할 수 있다고 말해요
 - 도구 결과로 확인되지 않은 일을 "했다", "예약했다", "저장했다"고 말하지 않기
 - "what can you do"에는 실제 기능 3~4개만 말하기
 - 도시를 말하지 않으면 서울
@@ -433,7 +434,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | 스무딩 이후에도 정적 텀이 계속 김 | 진폭(데시벨) 기준 VAD는 아무리 다듬어도 "말이 끝났다"를 소리 크기만으로 판단하는 방식 자체에 한계가 있음 | 브라우저의 `SpeechRecognition` 자체 음성종료 감지(`onspeechend`)를 1차 신호로 사용. Whisper 녹음(MediaRecorder)과 별개로 텍스트는 안 쓰는 보조 인식 세션을 하나 더 띄워서, `onspeechend`가 뜨면 바로 `stopWhisper()`. `onend`만으로는 트리거하지 않음(말을 시작하기도 전에 끊길 위험) — 기존 진폭 VAD·7초/20초 하드캡은 미지원 브라우저·실패 대비 백업으로 유지 |
 | 답변이 길면 음성이 중간에 소리 없이 끊김 | Chrome이 긴 `SpeechSynthesisUtterance`(대략 15초 이상)를 `onend`/`onerror` 없이 그냥 멈춰버리는 오래된 버그 | 답변을 짧은 조각(최대 80자, 마침표 없는 긴 문장은 단어 단위로 강제 분할)으로 쪼개 순차적으로 `speak()` 호출하는 큐 방식으로 변경. 처음엔 180자로 했다가 한국어는 글자당 발음 시간이 길어서 여전히 끊겨 80자로 더 줄임 |
 | 소리는 다 나왔는데 화면이 계속 RESPONDING에 멈춤 | 문장 큐 방식으로 바꾼 뒤에도, 마지막 조각의 `onend`가 간헐적으로 아예 안 뜨는 경우가 있음(Chrome 음성 이벤트 신뢰성 문제) | 조각마다 글자 수 기반 예상 재생 시간의 안전장치 타이머를 같이 걸어서, `onend`가 안 와도 강제로 다음 단계로 넘어가게 함 |
-| GitHub 연동 후 Vercel 배포가 `UNKNOWN` 상태로 몇 시간씩 안 끝남 | 처음엔 "Fix Git Configuration" 버튼으로만 표시돼 원인이 안 보였음. CLI 배포·git push 배포 둘 다 똑같이 막힘. 실제 원인은 Vercel이 이메일로 발송: 로컬 git의 커밋 작성자 이메일(`khchan04@naver.com`, 이 컴퓨터에 예전부터 전역 설정돼 있던 값)이 Vercel 팀 어떤 멤버와도 매칭이 안 돼서 배포를 조용히 계속 보류시킴 | ① Vercel 계정에 GitHub 로그인 연결 ② GitHub에 Vercel 앱 설치(저장소 접근 권한, All repositories로) ③ Vercel 프로젝트 Settings에서 **Root Directory를 `jarvis-vercel`로 지정** ④ 이 저장소에 한해 `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`{id}+{username}@users.noreply.github.com`, `gh api user`로 id 확인 가능)로 맞춤. 넷 다 해야 풀림 — 자세한 절차는 §5-3b |
+| GitHub 연동 후 Vercel 배포가 `UNKNOWN` 상태로 몇 시간씩 안 끝남 | 처음엔 "Fix Git Configuration" 버튼으로만 표시돼 원인이 안 보였음. CLI 배포·git push 배포 둘 다 똑같이 막힘. 실제 원인은 Vercel이 이메일로 발송: 로컬 git의 커밋 작성자 이메일(`khchan04@naver.com`, 이 컴퓨터에 예전부터 전역 설정돼 있던 값)이 Vercel 팀 어떤 멤버와도 매칭이 안 돼서 배포를 조용히 계속 보류시킴 | ① Vercel 계정에 GitHub 로그인 연결 ② GitHub에 Vercel 앱 설치(저장소 접근 권한, All repositories로) ③ Vercel 프로젝트 Settings에서 **Root Directory를 `jarvis-vercel`로 지정**(지금은 `jarvischan-vercel`) ④ 이 저장소에 한해 `git config user.email`을 GitHub 계정에 연결된 noreply 이메일(`{id}+{username}@users.noreply.github.com`, `gh api user`로 id 확인 가능)로 맞춤. 넷 다 해야 풀림 — 자세한 절차는 §5-3b |
 | 노트북(크롬)에선 말 끝나고 바로 끊기는데 폰/패드에선 자동 종료가 거의 안 됨 | iOS Safari는 `onspeechend`(§6 위쪽 항목의 해결책) 자체가 없거나 있어도 이벤트가 전혀 안 옴 — 확인해보니 `endpointer unavailable`/`no browser endpointer` 로그만 찍히고 조용함. 그래서 기기에 상관없이 늘 돌아가던 진폭 기준 VAD로 전부 떠넘겨지는데, 그 VAD가 기대하던 "조용한 방 = 거의 0" 전제가 모바일에서는 `getUserMedia`의 `autoGainControl`이 배경 소음까지 끌어올려서 깨져 있었음 | Whisper 녹음 스트림도 `autoGainControl:false`로 열어 원본 음량을 그대로 읽게 함. iOS에서는 어차피 못 쓰는 보조 `onspeechend` 세션 생성 자체를 건너뛰어 마이크 경합 위험도 없앰 |
 | 위 수정 후에도 아이패드에서 여전히 20초 하드캡까지 안 끊김(로그로 확인: floor가 0.1에 고정) | "조용함" 기준(floor)의 상한을 0.1로 하드코딩해둠 — AGC가 켜져 있던 시절엔 조용한 방 음량이 늘 0.1 아래였지만, AGC를 끄고 나니 그 기기의 진짜 주변 소음이 0.1보다 높아서 floor가 진짜 값을 못 따라감 | 상한을 0.7로 올림(안전장치일 뿐 목표값 아님) |
 | floor 상한을 올렸는데도 말 끝나고 15초 넘게 걸려서야 끊김(로그: floor가 3초 창마다 절반씩만 목표치에 접근) | 3초 창마다 "이전 floor 절반 + 이번 구간 최솟값 절반"으로만 재보정해서, 목표 주변 소음값에 도달하는 데 여러 창(수십 초)이 걸림 | 창을 1.2초로 줄이고, 절반만 섞는 대신 그 구간 최솟값으로 바로 스냅. "조용함" 확정 대기시간도 1.2초 → 0.8초로 단축해 체감 지연을 더 줄임 |
@@ -460,7 +461,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ---
 
-## 8. 현재 상태 (2026-09-16)
+## 8. 현재 상태와 진행 기록
+
+### 지금 상태 (2026-09-25)
+
+- 배포: `https://jarvischan.vercel.app`, Vercel 프로젝트 `khchan04/jarvischan-vercel`(Root Directory `jarvischan-vercel`). `git push`하면 자동 배포(§5-3b)
+- 저장소: `https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스. README는 전부 한국어
+- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 9개), PWA 설치
+- 포트폴리오: https://kheechan04.github.io/jarvischan/
+- 아래는 날짜순 진행 기록이에요. 옛 주소·옛 이름이 나오는 건 그때 기록이라서 그래요.
+
+### 첫 배포 (2026-09-16)
 
 - 배포: `https://jarvis-vercel-beta.vercel.app`, Vercel 프로젝트 `jiwoo/jarvis-vercel`
 - 서버 도구 7개: 실제 API로 시험 통과
@@ -481,8 +492,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 **배포 방식이 바뀜:** GitHub 연동 완료, 이제 `git push`만 하면 자동 배포됨(§5-3b). 그날 겪은 "Vercel 배포가 계속 `UNKNOWN`으로 멈춤" 문제와 해결(Git 연동·GitHub 앱 설치·Root Directory·커밋 이메일)은 §6 표에 기록.
 
 **새 기능**
-- **웨이크워드**: "Jarvischan" / "자비스찬"이라고 부르면 박수나 버튼 없이 대화 시작. 브라우저 `SpeechRecognition`을 재사용, idle 상태일 때만 동작
-- **이름 변경**: 앱 전체 이름을 Jarvis → **Jarvischan(자비스찬)**으로 변경 — 타이틀·헤더·웨이크워드·시스템 프롬프트까지 전부. 내부 저장소 키/env var 이름은 안 건드림
+- **웨이크워드**: "Jarvischan" / "자비스찬"이라고 부르면 박수나 버튼 없이 대화 시작. 브라우저 `SpeechRecognition`을 재사용, 대기 상태일 때만 동작
+- **이름 변경**: 앱 전체 이름을 Jarvis → **Jarvischan(자비스찬)**으로 변경 — 타이틀·헤더·웨이크워드·시스템 프롬프트까지 전부. 내부 저장소 키·환경변수 이름은 안 건드림
 - **대화 기억**: 탭이 열려있는 동안 최근 약 10턴을 기억(서버·클라이언트 둘 다 `slice(-20)`). 더 늘리면 응답이 느려져서 절충한 값
 
 **안정성 수정 (모두 §6 표에 원인·해결 기록됨)**
@@ -538,7 +549,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 ```
 브라우저(index.html) ──ws://localhost:8765──▶ local-agent/agent.js ──▶ 실제 OS 명령
        ▲                                              │
-       └──────────── LLM 도구 호출 결과 relay ◀────────┘
+       └──────────── LLM 도구 호출 결과 중계 ◀────────┘
 ```
 
 1. 사용자가 `local-agent/`에서 `npm start`(또는 `start-agent.bat` 더블클릭)로 에이전트를 실행하면, 처음 한 번 페어링 토큰이 생성되고 콘솔에 출력된다.
