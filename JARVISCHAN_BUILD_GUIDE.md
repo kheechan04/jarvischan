@@ -4,7 +4,7 @@
 
 이 문서 하나에 명세, 구현 순서, 그동안 겪은 함정, 테스트 방법, 그리고 **파일 원본 전체**(맨 아래 부록)가 들어 있어요.
 
-**이미 배포돼 있는 상태에서 이어서 작업하는 거라면:** `jarvischan-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvischan`, Private)에도 연결돼 있어요. §5-1 추출 스크립트를 다시 돌릴 필요 없이, 파일을 바로 수정하고 §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포돼요(§5-3b). 수정한 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 방식으로 다시 동기화해서 md와 실제 코드가 항상 같은 내용이게 유지해주세요. 현재 상태 요약은 §8 참고.
+**이미 배포돼 있는 상태에서 이어서 작업하는 거라면:** `jarvischan-vercel/`이 이미 있고 GitHub(`https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스)에도 연결돼 있어요. §5-1 추출 스크립트를 다시 돌릴 필요 없이, 파일을 바로 수정하고 §5-2 검증 후 `git add`·`git commit`·`git push`만 하면 자동 배포돼요(§5-3b). 수정한 파일은 이 가이드 맨 아래 부록에도 §5-1과 같은 방식으로 다시 동기화해서 md와 실제 코드가 항상 같은 내용이게 유지해주세요. 현재 상태 요약은 §8 참고.
 
 ---
 
@@ -350,7 +350,7 @@ vercel deploy --prod --yes --name jarvischan-vercel
 
 현재 이 프로젝트는 GitHub과 연결돼 있어서, **`git push`만 해도 Vercel이 알아서 재배포**해요. `vercel deploy --prod --yes`는 여전히 되지만 이제 굳이 안 써도 됨.
 
-- 저장소: `https://github.com/kheechan04/jarvischan` (Private), 소유자 `kheechan04`
+- 저장소: `https://github.com/kheechan04/jarvischan` (2026-09-25부터 Public), 소유자 `kheechan04`
 - Vercel 프로젝트 `khchan04/jarvischan-vercel`의 **Settings → Git**에서 이 저장소에 연결돼 있고, **Root Directory가 `jarvischan-vercel`**로 지정돼 있음(저장소 루트엔 가이드 md도 같이 있어서 이게 꼭 필요함)
 - 새로 Claude Code 세션을 열어서 이어서 작업할 때: 코드 수정 → `git add` → `git commit` → `git push` 하면 끝. 수동으로 `vercel deploy` 안 해도 자동으로 뜸(보통 10초 안팎)
 - 배포 확인은 `vercel ls`로 상태(`● Ready`) 보거나, `curl`로 `https://jarvischan.vercel.app/` 직접 확인
@@ -519,6 +519,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **이름에서 "Core" 제거**: 탭 제목·헤더(`JARVISCHAN·CORE` → `JARVISCHAN`)·HUD 링 위 글씨(`J.A.R.V.I.S · CORE 000` → `JARVISCHAN · 000`)·PWA 앱 이름·README·가이드 제목·User-Agent를 모두 그냥 **Jarvischan**으로. 부팅 문구 "core online"처럼 시스템 상태를 말하는 core와 `data-core`·`#core` 같은 내부 이름은 그대로
 - **포트폴리오 페이지**: 이 프로젝트의 공개 기록은 `kheechan04/kheechan04.github.io` 저장소의 `jarvischan/`(https://kheechan04.github.io/jarvischan/, 상세는 `full.html`). 폴더를 `jarvis/`에서 옮겼고 옛 `/jarvis/` 주소는 없앰. 저장소·사이트 주소가 또 바뀌면 거기 "자료 출처" 표와 푸터 링크도 같이 고쳐야 함
 - **PWA 설치 확인 완료:** 사용자가 크롬에서 직접 설치해서 `Chrome 앱\Jarvischan`으로 등록된 것 확인(설치 가능 판정과 배포도 확인 완료). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 삭제
+- **저장소 Public 전환 + MIT 라이선스**: 전환 전에 커밋 기록 전체에서 API 키·비밀번호·`.env`·에이전트 토큰이 한 번도 커밋되지 않은 것, 커밋 이메일이 noreply인 것을 확인함. 비밀값은 계속 Vercel 환경변수에만 둘 것 — 이제 커밋하면 바로 공개됨
+- **로그인창 placeholder**: `••••••••`(점 8개)가 비밀번호 길이 힌트처럼 보여서 `Enter password` 글자로 바꿈. 입력 중에 찍히는 점은 브라우저 기본 동작이라 그대로
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
 ---
@@ -1005,7 +1007,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     <div class="stitle">Jarvischan · Access</div>
     <p class="snote">Enter the access password to bring the core online.</p>
     <label class="sfield"><span>Password</span>
-      <input id="gateInput" type="password" placeholder="••••••••" autocomplete="current-password"></label>
+      <input id="gateInput" type="password" placeholder="Enter password" autocomplete="current-password"></label>
     <div class="gate-err" id="gateErr" hidden>Wrong password — try again.</div>
     <div class="srow">
       <button type="submit" id="gateGo" class="sbtn primary">Enter</button>
