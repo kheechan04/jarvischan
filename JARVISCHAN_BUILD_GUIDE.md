@@ -516,6 +516,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - 저장소 루트에 `Jarvischan 열기.html` 추가 — 더블클릭하면 `https://jarvischan.vercel.app`으로 바로 넘어가는 바로가기 페이지(Vercel Root Directory 밖이라 배포되진 않음)
 - **사용자 확인 완료**: 새 주소에서 비밀번호·토큰 재입력 후 로컬 에이전트 연결 정상. 서버 도구 7개 실제 API 시험 통과, 에이전트는 새 주소 인증·잘못된 Origin/토큰 거부까지 확인
 - **PWA 추가**: `manifest.webmanifest` + `icons/` + `index.html` `<head>`에 manifest·theme-color·apple-touch-icon 링크. 크롬 주소창의 **설치** 버튼으로 앱 설치, 아이폰·아이패드는 공유 → 홈 화면에 추가. service worker는 안 넣음 — 크롬이 더 이상 설치 조건으로 요구하지 않고, 캐시 때문에 배포 후 옛 화면이 뜨는 문제를 피하려고. 헤드리스 크롬 `Page.getInstallabilityErrors`로 설치 가능(오류 0개) 확인
+- **확인이 남은 것:** 사용자가 크롬에서 **설치** 버튼으로 PWA를 직접 설치해 보는 것(설치 가능 판정과 배포는 확인 완료). 설치 전에 임시로 쓰던 바탕화면 바로가기(`chrome --app=…`)와 그 아이콘 `jarvischan.ico`는 PWA로 대체돼서 삭제
 - **일부러 안 바꾼 것**: `JARVIS_PASSWORD`·`JARVIS_AGENT_PORT` 환경변수, `x-jarvis-password` 헤더, `jarvis_*` 브라우저 저장 키(바꾸면 비밀번호 재입력·저장값 초기화가 생김), 웨이크워드 정규식 `/jarvis|자비스/`(핵심 음절만 매칭해야 인식률이 나옴 — §6 표), 영화 속 JARVIS를 가리키는 주석, 위의 지난 업데이트 기록
 
 ---
