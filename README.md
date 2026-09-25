@@ -35,7 +35,7 @@
 3. 환경변수 `GROQ_API_KEY`와 `JARVIS_PASSWORD`를 넣고 다시 배포해요.
 
 자세한 내용은 [`jarvischan-vercel/README.md`](jarvischan-vercel/README.md)를,
-로컬 에이전트 설정은 [`local-agent/README.md`](local-agent/README.md)를 참고하세요.
+로컬 에이전트 설정은 [`local-agent/README.md`](local-agent/README.md)를 참고하세요. 직접 배포한 주소에서 로컬 에이전트를 쓰려면 `local-agent/agent.js`의 `ALLOWED_ORIGINS`에 그 주소를 추가해야 해요.
 
 ## 라이선스
 

@@ -89,7 +89,9 @@ Jarvischan 페이지에서 **"Local agent"** 버튼(아래쪽 도구 모음, 웨
 - **페어링 토큰.** 처음 실행할 때 한 번 만들어져서
   `~/.jarvischan-agent/token.txt`에 저장돼요. 토큰 없이는 어떤 명령도 받지 않아요.
 - **Origin 확인.** Jarvischan 페이지 주소에서 온 WebSocket 연결만 받아요 — 그 밖의
-  연결은 인증을 확인하기도 전에 연결 단계에서 거절돼요.
+  연결은 인증을 확인하기도 전에 연결 단계에서 거절돼요. 허용 주소는 `agent.js`의
+  `ALLOWED_ORIGINS`에 있어요. Jarvischan을 **다른 주소에 직접 배포했다면** 그 주소
+  (예: `https://<프로젝트>.vercel.app`)를 여기에 추가해야 에이전트가 연결을 받아요.
 
 ## 다른 사람과 같이 쓰기
 
