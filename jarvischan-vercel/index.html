@@ -393,7 +393,7 @@
         <span class="cdot" aria-hidden="true"></span>
         <span class="lalbl">Local agent · off</span>
       </button>
-      <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="English voice"></select></label>
+      <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="Voice"></select></label>
       <label class="voice-sel"><span>Lang</span><select id="langSel" aria-label="Language">
         <option value="auto">Auto</option><option value="ko">한국어</option><option value="en">English</option></select></label>
       <label class="voice-sel"><span>Theme</span><select id="themeSel" aria-label="Core theme">
@@ -1096,11 +1096,18 @@
   }
 
   /* ==========================================================
-     SPEECH SYNTHESIS (TTS, English)
+     SPEECH SYNTHESIS (TTS, English + Korean)
      ========================================================== */
   const voiceSel=$("voiceSel");
-  let voice=null, voicesEN=[], voiceUserPick=false;
-  let voicesKO=[];                                    // Korean replies pick the best of these
+  // The menu lists Korean and English voices; each language keeps its own pick
+  // (stored per browser) and falls back to the best-scored voice. Voices are
+  // keyed by voiceURI, since iOS lists several voices under one name (e.g. a
+  // default and an enhanced "Samantha") and matching by name picks the wrong one.
+  let voicesEN=[], voicesKO=[];
+  const vkey=v=>v.voiceURI||v.name;
+  const vlabel=v=>v.name.replace(/\(.*?\)/g,"").trim();
+  const voicePick={en:"", ko:""};
+  try{ voicePick.en=localStorage.getItem("jarvis_voice_en")||""; voicePick.ko=localStorage.getItem("jarvis_voice_ko")||""; }catch(e){}
   function scoreKo(v){
     const n=v.name.toLowerCase(); let s=0;
     if(/google/.test(n)) s+=100;
@@ -1125,7 +1132,7 @@
   // iPadOS reports as "Macintosh" in the UA string (desktop-class Safari), so it's only
   // distinguishable from real macOS by touch support.
   const isIOS = /iP(hone|od|ad)/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
-  let loggedVoices=false, loggedSpoke=false;
+  let loggedVoices=false, loggedSpoke="";
   function loadVoices(){
     if(!("speechSynthesis" in window)) return;
     voicesEN = speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
@@ -1133,15 +1140,24 @@
     voicesKO = speechSynthesis.getVoices().filter(v=>/^ko/i.test(v.lang)).sort((a,b)=>scoreKo(b)-scoreKo(a));
     if(!loggedVoices && voicesEN.length){ loggedVoices=true;
       log(uaTag+" · <span class='ok'>"+voicesEN.length+" EN · "+voicesKO.length+" KO voices</span>"); }
-    if(!voiceUserPick) voice = voicesEN[0] || null;
-    else if(voice){ const m=voicesEN.find(v=>v.name===voice.name); if(m) voice=m; } // keep ref fresh
     if(voiceSel){
       voiceSel.innerHTML="";
-      if(!voicesEN.length){ const o=document.createElement("option"); o.textContent="System default"; voiceSel.appendChild(o); }
-      voicesEN.forEach(v=>{ const o=document.createElement("option"); o.value=v.name;
-        o.textContent=v.name.replace(/\(.*?\)/g,"").trim()+" · "+v.lang;
-        if(voice&&v.name===voice.name) o.selected=true; voiceSel.appendChild(o); });
+      if(!voicesEN.length && !voicesKO.length){ const o=document.createElement("option"); o.textContent="System default"; voiceSel.appendChild(o); }
+      [["ko","한국어",voicesKO],["en","English",voicesEN]].forEach(([lang,title,list])=>{
+        if(!list.length) return;
+        const g=document.createElement("optgroup"); g.label=title;
+        list.forEach(v=>{ const o=document.createElement("option"); o.value=lang+"|"+vkey(v);
+          o.textContent=vlabel(v)+" · "+v.lang; g.appendChild(o); });
+        voiceSel.appendChild(g);
+      });
+      syncVoiceSel();
     }
+  }
+  // show the voice the next reply will use (its language follows the conversation)
+  function syncVoiceSel(){
+    if(!voiceSel) return;
+    const lang=lastLang==="ko"?"ko":"en", v=liveVoice(lang);
+    if(v) voiceSel.value=lang+"|"+vkey(v);
   }
   if("speechSynthesis" in window){
     loadVoices();
@@ -1152,19 +1168,22 @@
   // silently ignored (engine falls back to the system default).
   function liveVoice(lang){
     if(!("speechSynthesis" in window)) return null;
-    const vs=speechSynthesis.getVoices();
-    if(lang==="ko"){
-      const best=voicesKO[0];
-      return (best && vs.find(v=>v.name===best.name)) || vs.find(v=>/^ko/i.test(v.lang)) || null;
-    }
-    if(voice){ const m=vs.find(v=>v.name===voice.name); if(m) return m; }
-    return vs.find(v=>/^en/i.test(v.lang)) || null;
+    const vs=speechSynthesis.getVoices(), re=lang==="ko"?/^ko/i:/^en/i;
+    const pick=voicePick[lang], best=(lang==="ko"?voicesKO:voicesEN)[0];
+    return (pick && vs.find(v=>vkey(v)===pick))
+      || (best && vs.find(v=>vkey(v)===vkey(best)))
+      || vs.find(v=>re.test(v.lang)) || null;
   }
   if(voiceSel) voiceSel.addEventListener("change",()=>{
-    const v=voicesEN.find(x=>x.name===voiceSel.value);
-    if(v){ voice=v; voiceUserPick=true;
-      log('voice → <span class="ok">'+v.name.replace(/\(.*?\)/g,"").trim()+"</span>");
-      try{ const u=new SpeechSynthesisUtterance("Voice ready."); u.voice=v; u.lang=v.lang; u.rate=1.02; speechSynthesis.speak(u); }catch(e){} }
+    const [lang,key]=voiceSel.value.split(/\|(.*)/s);
+    const v=(lang==="ko"?voicesKO:voicesEN).find(x=>vkey(x)===key);
+    if(!v) return;
+    voicePick[lang]=key;
+    try{ localStorage.setItem("jarvis_voice_"+lang,key); }catch(e){}
+    log('voice → <span class="ok">'+vlabel(v)+" ("+v.lang+")</span>");
+    try{ speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(lang==="ko"?"이 목소리로 대답할게요.":"I'll answer in this voice.");
+      u.voice=v; u.lang=v.lang; u.rate=1.02; speechSynthesis.speak(u); ttsWarm=true; }catch(e){}
   });
   // iOS Safari and Android Chrome only let speechSynthesis talk once it has been
   // started from inside a user gesture. Replies are spoken after an await (the
@@ -1209,6 +1228,16 @@
       speechSynthesis.cancel(); speechSynthesis.speak(u);
     }catch(e){ go(); }
   }
+  // Quote marks and markdown symbols are for the eye: the engine reads a lone
+  // ' as "apostrophe" and * or ` by name. Apostrophes inside words (don't,
+  // Jarvischan's) stay, since the engine pronounces those correctly.
+  function speakable(t){
+    return String(t)
+      .replace(/[‘’ʼ]/g,"'")
+      .replace(/(^|[^A-Za-z])'+|'+(?![A-Za-z])/g,"$1")
+      .replace(/[“”"`*_#|<>\[\]{}]/g," ")
+      .replace(/\s{2,}/g," ").trim();
+  }
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
@@ -1227,10 +1256,14 @@
     // iOS can also leave the engine paused after an audio interruption, with
     // speak() then queuing silently forever.
     try{ speechSynthesis.resume(); }catch(e){}
+    text=speakable(text);
+    if(!text){ setMode("idle"); return; }
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
-    if(!loggedSpoke || (ko && loggedSpoke!=="ko")){ loggedSpoke=ko?"ko":true;
-      log('tts → <span class="'+(v?"ok":"rt")+'">'+(v?v.name.replace(/\(.*?\)/g,"").trim()+" ("+v.lang+")":"system default")+"</span>"); }
+    const vname=v?vlabel(v)+" ("+v.lang+")":"system default";
+    if(vname!==loggedSpoke){ loggedSpoke=vname;
+      log('tts → <span class="'+(v?"ok":"rt")+'">'+vname+"</span>"); }
+    syncVoiceSel();
     // Chrome silently cuts off long utterances partway through (a long-standing
     // bug: speech just stops with neither onend nor onerror ever firing).
     // Speaking the reply as a queue of short chunks keeps each one comfortably

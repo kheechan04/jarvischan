@@ -609,6 +609,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **사용자 확인 완료**: 아이폰 Safari에서 새로 연 페이지로 바로 웨이크워드를 켜도 확인 음성이 나오고, 웨이크워드 연속 대화와 대답 소리가 모두 정상이다. 한 번 두 번째 질문이 "We're in the next segment."처럼 엉뚱하게 받아 적혔는데, 사용자 발음 문제로 확인돼서 손대지 않았다.
 - **진단 로그 정리**: 원인을 찾으려고 넣은 웨이크워드 로그(시작·`listening`·`audio in`·`ended`·받아 적은 글자·모드 변화·모든 오류)와 매 대답의 `tts started`를 뺐다. 15초마다 세션을 새로 열어서 로그가 금방 밀렸기 때문이다. 정상에서 벗어날 때만 찍히는 로그(`wake-word … retrying`, `start threw`, `mic blocked`, `tts error`, `mic meter audio suspended`)와 한 번만 찍히는 `tts warmed up`은 남겼다.
 - **남은 코드 정리 거리(동작에는 영향 없음)**: `AudioContext` suspend, `speechSynthesis.resume()`, 웨이크워드 재시도 로직은 진짜 원인(`warmTTS`)을 찾기 전에 넣은 것이다. 지금 조합이 실기기에서 확인된 상태라 그대로 뒀다. 빼려면 아이폰에서 다시 확인해야 한다.
+- **작은따옴표를 "아포스트로피"라고 읽던 문제**: 대답에 들어간 `'25분'` 같은 따옴표를 음성 엔진이 기호 이름으로 읽었다. `speakable()`이 말하기 직전에 단어 밖의 작은따옴표, 큰따옴표, 마크다운 기호(`` ` `` `*` `_` `#` 등)를 지운다. `don't`, `Jarvischan's`처럼 단어 안의 아포스트로피는 엔진이 제대로 읽으므로 남긴다. 화면에 보이는 대답 글자는 그대로다.
+- **목소리 메뉴에서 사만다 말고는 안 바뀌던 문제**: 원인이 겹쳐 있었다. (1) 메뉴가 영어 목소리만 보여서, 한국어 대답은 무엇을 골라도 항상 가장 점수가 높은 한국어 목소리로 읽었다. (2) 고른 목소리를 저장하지 않아 새로고침하면 사만다로 돌아갔다. (3) 이름으로 목소리를 찾았는데, iOS는 한 이름 아래 여러 목소리(기본·향상됨 등)를 두어서 다른 목소리가 잡힐 수 있었다. 이제 메뉴에 `한국어`·`English` 묶음을 모두 보여주고, 언어마다 따로 고른 목소리를 `localStorage`(`jarvis_voice_ko`·`jarvis_voice_en`)에 저장하며, `voiceURI`로 찾는다. 메뉴에는 다음 대답에 쓸 목소리가 표시되고, 고르면 그 목소리로 한 문장 들려준다. 로그의 `tts →`는 이제 목소리가 바뀔 때마다 찍힌다.
 
 ---
 
@@ -618,7 +620,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 111,770 bytes | `9be5a7a31f893254…` |
+| `index.html` | 113,224 bytes | `142cf9fc7bfaef29…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -628,7 +630,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=9be5a7a31f893254d56201ba8d967871f7427b99012c50b1bc7086f526dec1b4 -->
+<!-- FILE: index.html sha256=142cf9fc7bfaef29cb417136da5e65cd5f45f155763044187f2781050404bf06 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1025,7 +1027,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         <span class="cdot" aria-hidden="true"></span>
         <span class="lalbl">Local agent · off</span>
       </button>
-      <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="English voice"></select></label>
+      <label class="voice-sel"><span>Voice</span><select id="voiceSel" aria-label="Voice"></select></label>
       <label class="voice-sel"><span>Lang</span><select id="langSel" aria-label="Language">
         <option value="auto">Auto</option><option value="ko">한국어</option><option value="en">English</option></select></label>
       <label class="voice-sel"><span>Theme</span><select id="themeSel" aria-label="Core theme">
@@ -1728,11 +1730,18 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   }
 
   /* ==========================================================
-     SPEECH SYNTHESIS (TTS, English)
+     SPEECH SYNTHESIS (TTS, English + Korean)
      ========================================================== */
   const voiceSel=$("voiceSel");
-  let voice=null, voicesEN=[], voiceUserPick=false;
-  let voicesKO=[];                                    // Korean replies pick the best of these
+  // The menu lists Korean and English voices; each language keeps its own pick
+  // (stored per browser) and falls back to the best-scored voice. Voices are
+  // keyed by voiceURI, since iOS lists several voices under one name (e.g. a
+  // default and an enhanced "Samantha") and matching by name picks the wrong one.
+  let voicesEN=[], voicesKO=[];
+  const vkey=v=>v.voiceURI||v.name;
+  const vlabel=v=>v.name.replace(/\(.*?\)/g,"").trim();
+  const voicePick={en:"", ko:""};
+  try{ voicePick.en=localStorage.getItem("jarvis_voice_en")||""; voicePick.ko=localStorage.getItem("jarvis_voice_ko")||""; }catch(e){}
   function scoreKo(v){
     const n=v.name.toLowerCase(); let s=0;
     if(/google/.test(n)) s+=100;
@@ -1757,7 +1766,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // iPadOS reports as "Macintosh" in the UA string (desktop-class Safari), so it's only
   // distinguishable from real macOS by touch support.
   const isIOS = /iP(hone|od|ad)/.test(UA) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
-  let loggedVoices=false, loggedSpoke=false;
+  let loggedVoices=false, loggedSpoke="";
   function loadVoices(){
     if(!("speechSynthesis" in window)) return;
     voicesEN = speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
@@ -1765,15 +1774,24 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     voicesKO = speechSynthesis.getVoices().filter(v=>/^ko/i.test(v.lang)).sort((a,b)=>scoreKo(b)-scoreKo(a));
     if(!loggedVoices && voicesEN.length){ loggedVoices=true;
       log(uaTag+" · <span class='ok'>"+voicesEN.length+" EN · "+voicesKO.length+" KO voices</span>"); }
-    if(!voiceUserPick) voice = voicesEN[0] || null;
-    else if(voice){ const m=voicesEN.find(v=>v.name===voice.name); if(m) voice=m; } // keep ref fresh
     if(voiceSel){
       voiceSel.innerHTML="";
-      if(!voicesEN.length){ const o=document.createElement("option"); o.textContent="System default"; voiceSel.appendChild(o); }
-      voicesEN.forEach(v=>{ const o=document.createElement("option"); o.value=v.name;
-        o.textContent=v.name.replace(/\(.*?\)/g,"").trim()+" · "+v.lang;
-        if(voice&&v.name===voice.name) o.selected=true; voiceSel.appendChild(o); });
+      if(!voicesEN.length && !voicesKO.length){ const o=document.createElement("option"); o.textContent="System default"; voiceSel.appendChild(o); }
+      [["ko","한국어",voicesKO],["en","English",voicesEN]].forEach(([lang,title,list])=>{
+        if(!list.length) return;
+        const g=document.createElement("optgroup"); g.label=title;
+        list.forEach(v=>{ const o=document.createElement("option"); o.value=lang+"|"+vkey(v);
+          o.textContent=vlabel(v)+" · "+v.lang; g.appendChild(o); });
+        voiceSel.appendChild(g);
+      });
+      syncVoiceSel();
     }
+  }
+  // show the voice the next reply will use (its language follows the conversation)
+  function syncVoiceSel(){
+    if(!voiceSel) return;
+    const lang=lastLang==="ko"?"ko":"en", v=liveVoice(lang);
+    if(v) voiceSel.value=lang+"|"+vkey(v);
   }
   if("speechSynthesis" in window){
     loadVoices();
@@ -1784,19 +1802,22 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // silently ignored (engine falls back to the system default).
   function liveVoice(lang){
     if(!("speechSynthesis" in window)) return null;
-    const vs=speechSynthesis.getVoices();
-    if(lang==="ko"){
-      const best=voicesKO[0];
-      return (best && vs.find(v=>v.name===best.name)) || vs.find(v=>/^ko/i.test(v.lang)) || null;
-    }
-    if(voice){ const m=vs.find(v=>v.name===voice.name); if(m) return m; }
-    return vs.find(v=>/^en/i.test(v.lang)) || null;
+    const vs=speechSynthesis.getVoices(), re=lang==="ko"?/^ko/i:/^en/i;
+    const pick=voicePick[lang], best=(lang==="ko"?voicesKO:voicesEN)[0];
+    return (pick && vs.find(v=>vkey(v)===pick))
+      || (best && vs.find(v=>vkey(v)===vkey(best)))
+      || vs.find(v=>re.test(v.lang)) || null;
   }
   if(voiceSel) voiceSel.addEventListener("change",()=>{
-    const v=voicesEN.find(x=>x.name===voiceSel.value);
-    if(v){ voice=v; voiceUserPick=true;
-      log('voice → <span class="ok">'+v.name.replace(/\(.*?\)/g,"").trim()+"</span>");
-      try{ const u=new SpeechSynthesisUtterance("Voice ready."); u.voice=v; u.lang=v.lang; u.rate=1.02; speechSynthesis.speak(u); }catch(e){} }
+    const [lang,key]=voiceSel.value.split(/\|(.*)/s);
+    const v=(lang==="ko"?voicesKO:voicesEN).find(x=>vkey(x)===key);
+    if(!v) return;
+    voicePick[lang]=key;
+    try{ localStorage.setItem("jarvis_voice_"+lang,key); }catch(e){}
+    log('voice → <span class="ok">'+vlabel(v)+" ("+v.lang+")</span>");
+    try{ speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(lang==="ko"?"이 목소리로 대답할게요.":"I'll answer in this voice.");
+      u.voice=v; u.lang=v.lang; u.rate=1.02; speechSynthesis.speak(u); ttsWarm=true; }catch(e){}
   });
   // iOS Safari and Android Chrome only let speechSynthesis talk once it has been
   // started from inside a user gesture. Replies are spoken after an await (the
@@ -1841,6 +1862,16 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       speechSynthesis.cancel(); speechSynthesis.speak(u);
     }catch(e){ go(); }
   }
+  // Quote marks and markdown symbols are for the eye: the engine reads a lone
+  // ' as "apostrophe" and * or ` by name. Apostrophes inside words (don't,
+  // Jarvischan's) stay, since the engine pronounces those correctly.
+  function speakable(t){
+    return String(t)
+      .replace(/[‘’ʼ]/g,"'")
+      .replace(/(^|[^A-Za-z])'+|'+(?![A-Za-z])/g,"$1")
+      .replace(/[“”"`*_#|<>\[\]{}]/g," ")
+      .replace(/\s{2,}/g," ").trim();
+  }
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
@@ -1859,10 +1890,14 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     // iOS can also leave the engine paused after an audio interruption, with
     // speak() then queuing silently forever.
     try{ speechSynthesis.resume(); }catch(e){}
+    text=speakable(text);
+    if(!text){ setMode("idle"); return; }
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
-    if(!loggedSpoke || (ko && loggedSpoke!=="ko")){ loggedSpoke=ko?"ko":true;
-      log('tts → <span class="'+(v?"ok":"rt")+'">'+(v?v.name.replace(/\(.*?\)/g,"").trim()+" ("+v.lang+")":"system default")+"</span>"); }
+    const vname=v?vlabel(v)+" ("+v.lang+")":"system default";
+    if(vname!==loggedSpoke){ loggedSpoke=vname;
+      log('tts → <span class="'+(v?"ok":"rt")+'">'+vname+"</span>"); }
+    syncVoiceSel();
     // Chrome silently cuts off long utterances partway through (a long-standing
     // bug: speech just stops with neither onend nor onerror ever firing).
     // Speaking the reply as a queue of short chunks keeps each one comfortably
