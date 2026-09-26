@@ -958,7 +958,7 @@
   /* ==========================================================
      MIC + Web Audio analyser
      ========================================================== */
-  let audioCtx=null, analyser=null, freqData=null, micStream=null, rafMic=0, micError="";
+  let audioCtx=null, analyser=null, freqData=null, micStream=null, micSrc=null, rafMic=0, micError="";
   let voiceLo=1, voiceHi=8;   // frequency-bin range the level meter reads, set once the analyser is sized
   function micHelp(){
     if(micError==="unsupported")
@@ -979,16 +979,13 @@
         // floor-tracking VAD below on phones/tablets. noiseSuppression and
         // echoCancellation stay on since those help Whisper transcription
         // instead of hurting it (see CLAP-TO-WAKE below for the contrast).
-        setAudioSession("play-and-record");
         micStream=await navigator.mediaDevices.getUserMedia({audio:{autoGainControl:false}});
         micError="";
       }
-      if(!audioCtx){
-        audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-        const src=audioCtx.createMediaStreamSource(micStream);
+      if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(!analyser){
         analyser=audioCtx.createAnalyser();
         analyser.fftSize=128; analyser.smoothingTimeConstant=0.75;
-        src.connect(analyser);
         freqData=new Uint8Array(analyser.frequencyBinCount);
         // Averaging the whole spectrum (sub-bass hum up through hiss) blurs the
         // gap between "someone's talking" and "the room has background noise".
@@ -999,7 +996,11 @@
         voiceHi=Math.min(freqData.length-1,Math.round(3400/binHz));
         if(voiceHi<=voiceLo) voiceHi=Math.min(freqData.length-1,voiceLo+1);
       }
-      if(audioCtx.state==="suspended") await audioCtx.resume();
+      // A new source per stream: releaseMic() stops the old tracks between turns.
+      if(!micSrc){ micSrc=audioCtx.createMediaStreamSource(micStream); micSrc.connect(analyser); }
+      // outside a tap iOS can leave resume() pending forever, so don't wait on it
+      if(audioCtx.state==="suspended") await Promise.race([audioCtx.resume().catch(()=>{}), new Promise(r=>setTimeout(r,300))]);
+      if(audioCtx.state!=="running") log("mic meter <span class='rt'>audio "+audioCtx.state+"</span>");
       const tick=()=>{
         if(!analyser) return;
         analyser.getByteFrequencyData(freqData);
@@ -1020,14 +1021,15 @@
   // While a mic track stays live, iOS and Android keep the device in call-audio
   // mode: output is routed to the earpiece or ducked to near silence, so the
   // spoken reply can't be heard. Close the stream once the utterance is captured;
-  // the next tap reopens it. The context goes too since its source is bound to
-  // the old stream (beep() makes its own when audioCtx is null).
+  // the next tap reopens it. The AudioContext is kept: iOS leaves a context
+  // created outside a tap suspended, which would read the next recording as
+  // silence, so only the stream and its source node are dropped.
   function releaseMic(){
     if(recorder && recorder.state==="recording") return;
     stopMicMeter();
+    try{ micSrc && micSrc.disconnect(); }catch(e){}
     try{ micStream && micStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-    try{ audioCtx && audioCtx.close(); }catch(e){}
-    micStream=null; audioCtx=null; analyser=null; freqData=null;
+    micStream=null; micSrc=null;
   }
 
   /* ---- language: Auto (Whisper tells Korean from English) · 한국어 · English ---- */
@@ -1168,21 +1170,22 @@
   // started from inside a user gesture. Replies are spoken after an await (the
   // /api/chat fetch), which is outside any gesture, so on phones and tablets they
   // were silently dropped. Speaking an empty utterance on the first tap unlocks
-  // the engine for the rest of the page's life. The shared AudioContext (timer
-  // beep) is resumed on the same tap for the same reason.
+  // the engine for the rest of the page's life. The shared AudioContext (mic
+  // meter, timer beep) is created and resumed on taps for the same reason: iOS
+  // keeps a context suspended unless a tap starts it.
+  // (navigator.audioSession was tried here too and made things worse on iPhone:
+  // switching its type mid-conversation muted replies and blocked the mic after.)
   let ttsUnlocked=false;
   function unlockAudio(){
-    if(ttsUnlocked) return;
+    try{
+      if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state==="suspended") audioCtx.resume();
+    }catch(e){}
+    if(ttsUnlocked || !("speechSynthesis" in window)) return;
     ttsUnlocked=true;
     try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){}
-    try{ if(audioCtx && audioCtx.state==="suspended") audioCtx.resume(); }catch(e){}
-    ["pointerdown","touchend","keydown","click"].forEach(t=>window.removeEventListener(t,unlockAudio,true));
   }
-  if("speechSynthesis" in window)
-    ["pointerdown","touchend","keydown","click"].forEach(t=>window.addEventListener(t,unlockAudio,true));
-  // Safari 16.4+: "playback" lets speech play past the ring/silent switch; the mic
-  // needs "play-and-record" while it's open. Browsers without the API skip this.
-  function setAudioSession(type){ try{ if(navigator.audioSession) navigator.audioSession.type=type; }catch(e){} }
+  ["pointerdown","touchend","keydown"].forEach(t=>window.addEventListener(t,unlockAudio,true));
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
@@ -1192,7 +1195,6 @@
     // here and reopened in done() below.
     releaseMic();
     if(clapOn && clapStream) closeClapMic();
-    setAudioSession("playback");
     speechSynthesis.cancel();
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
@@ -1222,10 +1224,7 @@
       return out;
     },[]);
     let i=0;
-    // An armed wake word or clap listener reopens the mic right after this, so hand
-    // the session straight back to capture mode; iOS won't restart recognition
-    // from "playback".
-    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession(wwOn||clapOn ? "play-and-record" : "auto"); setMode("idle");
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle");
       if(clapOn && !clapStream) startClapWake().then(ok=>{ if(!ok) log("clap-wake <span class='rt'>couldn't reopen mic</span>"); }); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
@@ -1992,8 +1991,8 @@
       // the watcher below restarts it
     };
     wwRec.onend=()=>{ wwActive=false; log("wake-word <span class='rt'>ended</span>"); };
-    log("wake-word start · session "+(navigator.audioSession?navigator.audioSession.type:"n/a"));
-    try{ setAudioSession("play-and-record"); wwRec.start(); wwActive=true; wwStarted=Date.now(); }
+    log("wake-word start");
+    try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }
     catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>start threw "+String(e&&e.name||e).replace(/[<>&]/g,"")+" · retrying</span>"); }
   }
   function turnWakeWordOff(){

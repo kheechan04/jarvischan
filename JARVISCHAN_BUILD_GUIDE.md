@@ -595,12 +595,13 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### 업데이트 (2026-09-26) — 모바일 음성 출력과 링크 미리보기
 
-- **폰·패드에서 답변 소리가 안 나던 문제**: 원인이 세 가지였다. (1) iOS Safari와 안드로이드 크롬은 `speechSynthesis`를 사용자 제스처 안에서 한 번 시작해야 이후 발화를 허용하는데, 답변은 `/api/chat` 응답을 기다린 뒤에 말해서 조용히 버려졌다. 첫 탭·키 입력 때 음량 0짜리 빈 발화를 한 번 보내서 엔진을 연다(`unlockAudio`). (2) Whisper 녹음이 끝나도 마이크 스트림을 닫지 않아서 기기가 통화 오디오 모드에 머물렀고, 출력이 수화기로 가거나 거의 안 들렸다. 녹음이 끝나면 `releaseMic()`으로 트랙과 `AudioContext`를 닫고 다음 탭에 다시 연다. (3) 박수 깨우기는 마이크를 계속 열어 두므로 발화 시작 때 닫고 발화가 끝나면 다시 연다. 웨이크워드 인식기는 원래 대기 상태가 아닐 때 멈추므로 따로 손대지 않았다. Safari 16.4+의 `navigator.audioSession`으로 말하는 동안 `playback`(무음 스위치 무시), 마이크를 열 때 `play-and-record`, 발화가 끝나면 `auto`로 둔다.
+- **폰·패드에서 답변 소리가 안 나던 문제**: 원인이 세 가지였다. (1) iOS Safari와 안드로이드 크롬은 `speechSynthesis`를 사용자 제스처 안에서 한 번 시작해야 이후 발화를 허용하는데, 답변은 `/api/chat` 응답을 기다린 뒤에 말해서 조용히 버려졌다. 첫 탭·키 입력 때 음량 0짜리 빈 발화를 한 번 보내서 엔진을 연다(`unlockAudio`). (2) Whisper 녹음이 끝나도 마이크 스트림을 닫지 않아서 기기가 통화 오디오 모드에 머물렀고, 출력이 수화기로 가거나 거의 안 들렸다. 녹음이 끝나면 `releaseMic()`으로 트랙과 `AudioContext`를 닫고 다음 탭에 다시 연다. (3) 박수 깨우기는 마이크를 계속 열어 두므로 발화 시작 때 닫고 발화가 끝나면 다시 연다. 웨이크워드 인식기는 원래 대기 상태가 아닐 때 멈추므로 따로 손대지 않았다. 처음에는 Safari 16.4+의 `navigator.audioSession`으로 세션 종류도 바꿨지만, 아이폰에서 오히려 소리와 마이크를 막아서 뒤에 뺐다(아래 "두 번째 진단 결과와 되돌림").
 - **메신저 링크 미리보기**: Open Graph·`description`·`twitter:card`·canonical 태그가 없어서 카카오톡 등에서 링크 카드 없이 글자로만 보였다. `<head>`에 넣었고 주소는 `https://jarvischan.vercel.app` 절대 경로다. 직접 배포하는 사람은 자기 도메인으로 바꿔야 한다. 카카오톡은 미리보기를 캐시하므로 배포 후 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 뜬다.
 - **링크 옆 사이트 아이콘**: 메신저와 브라우저 상당수는 `<link rel="icon">`보다 루트의 `/favicon.ico`를 먼저 찾는데 이 파일이 없어서 404였다. `icon-512.png`로 `favicon.ico`(16·32·48px)와 `icons/icon-32.png`를 만들어 넣고 `<head>`에 연결했다.
 - **폰 카카오톡에서 카드가 안 뜨던 문제**: 노트북(PC 카톡)에서는 카드가 떴지만 폰에서는 글자로만 보였다. 폰에서 카드가 잘 뜨는 shadow-mitts와 비교하면 미리보기 이미지가 512px 정사각 아이콘(`summary`)이었던 것이 달랐다. shadow-mitts와 같은 형식으로 1200×630 `og.png`를 새로 만들고(앱 아이콘 + 이름 + 한 줄 소개), `twitter:card`를 `summary_large_image`로, 제목·설명을 한국어로 바꾸고 `og:locale` `ko_KR`을 넣었다.
 - **아이폰에서 대답 후 웨이크워드가 다시 안 켜지던 문제**: 소리 수정 뒤 아이폰 Safari에서 대답은 들리지만 그다음 "자비스"에 반응하지 않았다. 추정 원인은 두 가지다. (1) 대답이 끝나면 오디오 세션을 `playback`에서 `auto`로만 돌려서, iOS가 음성 인식을 다시 시작하지 못했다. (2) 재시작이 한 번 `not-allowed`로 실패하면 기존 코드가 웨이크워드를 아예 꺼 버렸다. 이제 웨이크워드나 박수 깨우기가 켜져 있으면 대답 직후 세션을 `play-and-record`로 되돌리고, 인식기를 시작하기 직전에도 `play-and-record`로 맞춘다. `not-allowed`는 한 번도 시작된 적이 없을 때만 진짜 차단으로 보고 끄며, 그 밖의 오류는 로그를 남기고 1.5초 뒤 다시 시도한다. **아이폰에서 확인해 보니 여전히 안 됐다**(첫 대화만 되고, 그 뒤로는 불러도 반응이 없고 마이크 표시도 안 뜸). 원인을 좁히려고 웨이크워드 인식기의 시작 시도(당시 오디오 세션 값)·`onstart`·`onaudiostart`·`onerror`(모든 오류)·`onend`·`start()` 예외를 전부 로그에 남기게 했다. 폰에서는 로그 패널이 기본으로 숨겨져 있으므로 `?debug=1`로 연다.
 - **첫 진단 결과(아이폰 Safari)**: 새로 연 페이지에서 웨이크워드를 켜자 `start · session auto` → `listening` → `audio in`까지 찍히고 주소창 마이크 표시도 떴지만, 그 뒤로 "자비스찬"을 불러도 아무 로그가 없었다. 인식기는 켜져 있고 소리도 들어가는데 결과(`onresult`)가 안 오거나 정규식에 안 걸리는 것이다. 둘을 가르려고 인식기가 받아 적은 글자(바뀔 때마다 한 번)와 웨이크워드 감시기가 보는 화면 모드 변화도 로그에 남기게 했다.
+- **두 번째 진단 결과와 되돌림**: 웨이크워드로 첫 질문은 녹음·인식·날씨 조회·`tts → 유나 (ko-KR)`까지 정상이고 소리 파형도 움직였지만 **소리가 다시 안 났다.** 대답 뒤에는 웨이크워드도, 마이크 버튼을 탭한 녹음도 말을 못 알아들었다. 처음 소리가 나게 고쳤을 때는 웨이크워드를 켜지 않았고, 그 뒤 추가한 `navigator.audioSession` 전환(`playback`↔`play-and-record`↔`auto`)이 공통 원인으로 보인다. 대화 중에 세션 종류를 바꾸면 iOS가 음성 출력을 묻고 마이크 녹음도 막는다. 그래서 `audioSession` 사용을 전부 뺐다. 또 `releaseMic()`이 `AudioContext`까지 닫아서, 다음 녹음 때 탭 밖에서 새 컨텍스트가 만들어지고 iOS에서 `suspended`로 남아 음량이 0으로 읽혔을 수 있다. 이제 컨텍스트와 분석기는 유지하고 스트림과 소스 노드만 바꾼다. 컨텍스트는 탭할 때마다 만들거나 깨우고, 탭 밖의 `resume()`은 300ms까지만 기다린다. 컨텍스트가 `running`이 아니면 로그에 남긴다.
 
 ---
 
@@ -610,7 +611,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 110,364 bytes | `db08be75d0b2e4b6…` |
+| `index.html` | 110,261 bytes | `326dc963c4e63847…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -620,7 +621,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=db08be75d0b2e4b66f2fdbb0d7f1351c40820008e0afa57f59d7f0c07e749e92 -->
+<!-- FILE: index.html sha256=326dc963c4e638478926962fe18d60bc3f0e3d2e4601ae4d4e27b16b7c07a5bb -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1582,7 +1583,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   /* ==========================================================
      MIC + Web Audio analyser
      ========================================================== */
-  let audioCtx=null, analyser=null, freqData=null, micStream=null, rafMic=0, micError="";
+  let audioCtx=null, analyser=null, freqData=null, micStream=null, micSrc=null, rafMic=0, micError="";
   let voiceLo=1, voiceHi=8;   // frequency-bin range the level meter reads, set once the analyser is sized
   function micHelp(){
     if(micError==="unsupported")
@@ -1603,16 +1604,13 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         // floor-tracking VAD below on phones/tablets. noiseSuppression and
         // echoCancellation stay on since those help Whisper transcription
         // instead of hurting it (see CLAP-TO-WAKE below for the contrast).
-        setAudioSession("play-and-record");
         micStream=await navigator.mediaDevices.getUserMedia({audio:{autoGainControl:false}});
         micError="";
       }
-      if(!audioCtx){
-        audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-        const src=audioCtx.createMediaStreamSource(micStream);
+      if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(!analyser){
         analyser=audioCtx.createAnalyser();
         analyser.fftSize=128; analyser.smoothingTimeConstant=0.75;
-        src.connect(analyser);
         freqData=new Uint8Array(analyser.frequencyBinCount);
         // Averaging the whole spectrum (sub-bass hum up through hiss) blurs the
         // gap between "someone's talking" and "the room has background noise".
@@ -1623,7 +1621,11 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         voiceHi=Math.min(freqData.length-1,Math.round(3400/binHz));
         if(voiceHi<=voiceLo) voiceHi=Math.min(freqData.length-1,voiceLo+1);
       }
-      if(audioCtx.state==="suspended") await audioCtx.resume();
+      // A new source per stream: releaseMic() stops the old tracks between turns.
+      if(!micSrc){ micSrc=audioCtx.createMediaStreamSource(micStream); micSrc.connect(analyser); }
+      // outside a tap iOS can leave resume() pending forever, so don't wait on it
+      if(audioCtx.state==="suspended") await Promise.race([audioCtx.resume().catch(()=>{}), new Promise(r=>setTimeout(r,300))]);
+      if(audioCtx.state!=="running") log("mic meter <span class='rt'>audio "+audioCtx.state+"</span>");
       const tick=()=>{
         if(!analyser) return;
         analyser.getByteFrequencyData(freqData);
@@ -1644,14 +1646,15 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // While a mic track stays live, iOS and Android keep the device in call-audio
   // mode: output is routed to the earpiece or ducked to near silence, so the
   // spoken reply can't be heard. Close the stream once the utterance is captured;
-  // the next tap reopens it. The context goes too since its source is bound to
-  // the old stream (beep() makes its own when audioCtx is null).
+  // the next tap reopens it. The AudioContext is kept: iOS leaves a context
+  // created outside a tap suspended, which would read the next recording as
+  // silence, so only the stream and its source node are dropped.
   function releaseMic(){
     if(recorder && recorder.state==="recording") return;
     stopMicMeter();
+    try{ micSrc && micSrc.disconnect(); }catch(e){}
     try{ micStream && micStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-    try{ audioCtx && audioCtx.close(); }catch(e){}
-    micStream=null; audioCtx=null; analyser=null; freqData=null;
+    micStream=null; micSrc=null;
   }
 
   /* ---- language: Auto (Whisper tells Korean from English) · 한국어 · English ---- */
@@ -1792,21 +1795,22 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // started from inside a user gesture. Replies are spoken after an await (the
   // /api/chat fetch), which is outside any gesture, so on phones and tablets they
   // were silently dropped. Speaking an empty utterance on the first tap unlocks
-  // the engine for the rest of the page's life. The shared AudioContext (timer
-  // beep) is resumed on the same tap for the same reason.
+  // the engine for the rest of the page's life. The shared AudioContext (mic
+  // meter, timer beep) is created and resumed on taps for the same reason: iOS
+  // keeps a context suspended unless a tap starts it.
+  // (navigator.audioSession was tried here too and made things worse on iPhone:
+  // switching its type mid-conversation muted replies and blocked the mic after.)
   let ttsUnlocked=false;
   function unlockAudio(){
-    if(ttsUnlocked) return;
+    try{
+      if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state==="suspended") audioCtx.resume();
+    }catch(e){}
+    if(ttsUnlocked || !("speechSynthesis" in window)) return;
     ttsUnlocked=true;
     try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){}
-    try{ if(audioCtx && audioCtx.state==="suspended") audioCtx.resume(); }catch(e){}
-    ["pointerdown","touchend","keydown","click"].forEach(t=>window.removeEventListener(t,unlockAudio,true));
   }
-  if("speechSynthesis" in window)
-    ["pointerdown","touchend","keydown","click"].forEach(t=>window.addEventListener(t,unlockAudio,true));
-  // Safari 16.4+: "playback" lets speech play past the ring/silent switch; the mic
-  // needs "play-and-record" while it's open. Browsers without the API skip this.
-  function setAudioSession(type){ try{ if(navigator.audioSession) navigator.audioSession.type=type; }catch(e){} }
+  ["pointerdown","touchend","keydown"].forEach(t=>window.addEventListener(t,unlockAudio,true));
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
@@ -1816,7 +1820,6 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     // here and reopened in done() below.
     releaseMic();
     if(clapOn && clapStream) closeClapMic();
-    setAudioSession("playback");
     speechSynthesis.cancel();
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
@@ -1846,10 +1849,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       return out;
     },[]);
     let i=0;
-    // An armed wake word or clap listener reopens the mic right after this, so hand
-    // the session straight back to capture mode; iOS won't restart recognition
-    // from "playback".
-    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession(wwOn||clapOn ? "play-and-record" : "auto"); setMode("idle");
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle");
       if(clapOn && !clapStream) startClapWake().then(ok=>{ if(!ok) log("clap-wake <span class='rt'>couldn't reopen mic</span>"); }); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
@@ -2616,8 +2616,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // the watcher below restarts it
     };
     wwRec.onend=()=>{ wwActive=false; log("wake-word <span class='rt'>ended</span>"); };
-    log("wake-word start · session "+(navigator.audioSession?navigator.audioSession.type:"n/a"));
-    try{ setAudioSession("play-and-record"); wwRec.start(); wwActive=true; wwStarted=Date.now(); }
+    log("wake-word start");
+    try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }
     catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>start threw "+String(e&&e.name||e).replace(/[<>&]/g,"")+" · retrying</span>"); }
   }
   function turnWakeWordOff(){
