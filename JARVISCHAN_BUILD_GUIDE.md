@@ -602,6 +602,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **아이폰에서 대답 후 웨이크워드가 다시 안 켜지던 문제**: 소리 수정 뒤 아이폰 Safari에서 대답은 들리지만 그다음 "자비스"에 반응하지 않았다. 추정 원인은 두 가지다. (1) 대답이 끝나면 오디오 세션을 `playback`에서 `auto`로만 돌려서, iOS가 음성 인식을 다시 시작하지 못했다. (2) 재시작이 한 번 `not-allowed`로 실패하면 기존 코드가 웨이크워드를 아예 꺼 버렸다. 이제 웨이크워드나 박수 깨우기가 켜져 있으면 대답 직후 세션을 `play-and-record`로 되돌리고, 인식기를 시작하기 직전에도 `play-and-record`로 맞춘다. `not-allowed`는 한 번도 시작된 적이 없을 때만 진짜 차단으로 보고 끄며, 그 밖의 오류는 로그를 남기고 1.5초 뒤 다시 시도한다. **아이폰에서 확인해 보니 여전히 안 됐다**(첫 대화만 되고, 그 뒤로는 불러도 반응이 없고 마이크 표시도 안 뜸). 원인을 좁히려고 웨이크워드 인식기의 시작 시도(당시 오디오 세션 값)·`onstart`·`onaudiostart`·`onerror`(모든 오류)·`onend`·`start()` 예외를 전부 로그에 남기게 했다. 폰에서는 로그 패널이 기본으로 숨겨져 있으므로 `?debug=1`로 연다.
 - **첫 진단 결과(아이폰 Safari)**: 새로 연 페이지에서 웨이크워드를 켜자 `start · session auto` → `listening` → `audio in`까지 찍히고 주소창 마이크 표시도 떴지만, 그 뒤로 "자비스찬"을 불러도 아무 로그가 없었다. 인식기는 켜져 있고 소리도 들어가는데 결과(`onresult`)가 안 오거나 정규식에 안 걸리는 것이다. 둘을 가르려고 인식기가 받아 적은 글자(바뀔 때마다 한 번)와 웨이크워드 감시기가 보는 화면 모드 변화도 로그에 남기게 했다.
 - **두 번째 진단 결과와 되돌림**: 웨이크워드로 첫 질문은 녹음·인식·날씨 조회·`tts → 유나 (ko-KR)`까지 정상이고 소리 파형도 움직였지만 **소리가 다시 안 났다.** 대답 뒤에는 웨이크워드도, 마이크 버튼을 탭한 녹음도 말을 못 알아들었다. 처음 소리가 나게 고쳤을 때는 웨이크워드를 켜지 않았고, 그 뒤 추가한 `navigator.audioSession` 전환(`playback`↔`play-and-record`↔`auto`)이 공통 원인으로 보인다. 대화 중에 세션 종류를 바꾸면 iOS가 음성 출력을 묻고 마이크 녹음도 막는다. 그래서 `audioSession` 사용을 전부 뺐다. 또 `releaseMic()`이 `AudioContext`까지 닫아서, 다음 녹음 때 탭 밖에서 새 컨텍스트가 만들어지고 iOS에서 `suspended`로 남아 음량이 0으로 읽혔을 수 있다. 이제 컨텍스트와 분석기는 유지하고 스트림과 소스 노드만 바꾼다. 컨텍스트는 탭할 때마다 만들거나 깨우고, 탭 밖의 `resume()`은 300ms까지만 기다린다. 컨텍스트가 `running`이 아니면 로그에 남긴다.
+- **연속 대화는 해결, 소리는 여전히 안 남**: 위 수정으로 아이폰에서 웨이크워드 연속 대화가 된다고 사용자가 확인했다. 하지만 대답 소리는 무음 모드가 아니고 귀에 대도 들리지 않았다. 소리가 났던 버전(`1ec3d74`)과의 남은 차이는 녹음 뒤 `AudioContext`를 닫느냐였다. 마이크 입력이 연결됐던 컨텍스트가 돌고 있으면 iOS 음성 합성이 아예 소리를 안 내는 것으로 보고, 대답하는 동안만 `audioCtx.suspend()`로 멈춘다. 다음 녹음 때 `startMicMeter()`가 마이크를 연 뒤 다시 깨운다. 닫지는 않으므로 연속 대화 쪽 수정은 그대로다. 오디오가 끊긴 뒤 iOS가 음성 엔진을 일시정지 상태로 남기는 경우에 대비해 `speechSynthesis.resume()`도 부르고, 첫 조각의 `onstart`(`tts started`)와 모든 `onerror` 코드를 로그에 남긴다.
 
 ---
 
@@ -611,7 +612,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 110,261 bytes | `326dc963c4e63847…` |
+| `index.html` | 110,968 bytes | `c441a921888002ed…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -621,7 +622,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=326dc963c4e638478926962fe18d60bc3f0e3d2e4601ae4d4e27b16b7c07a5bb -->
+<!-- FILE: index.html sha256=c441a921888002ed45cb983d43a931a955b16b931ba3a79bbd8ab86f42261c22 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1820,7 +1821,15 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     // here and reopened in done() below.
     releaseMic();
     if(clapOn && clapStream) closeClapMic();
+    // On iPhone a running AudioContext that has carried mic input keeps speech
+    // synthesis silent (not just quiet, and not the earpiece). Closing it fixed
+    // that but broke the next turn's level meter, so it is only suspended while
+    // replying; startMicMeter() resumes it once the mic is live again.
+    try{ if(audioCtx && audioCtx.state==="running") audioCtx.suspend(); }catch(e){}
     speechSynthesis.cancel();
+    // iOS can also leave the engine paused after an audio interruption, with
+    // speak() then queuing silently forever.
+    try{ speechSynthesis.resume(); }catch(e){}
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
     if(!loggedSpoke || (ko && loggedSpoke!=="ko")){ loggedSpoke=ko?"ko":true;
@@ -1863,13 +1872,14 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // stuck on "responding" forever. This fallback moves on regardless, sized
       // generously so it never cuts off genuine speech first.
       const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
-      u.onstart=()=>{ setMode("speaking");
+      u.onstart=()=>{ if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
       u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
       u.onend=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); speakNext(); } };
-      u.onerror=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } };
+      u.onerror=ev=>{ log("tts error <b>"+String(ev&&ev.error||"?").replace(/[<>&]/g,"")+"</b>");
+        if(!advanced){ advanced=true; clearTimeout(fallback); done(); } };
       try{ speechSynthesis.speak(u); }catch(e){ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } }
     };
     // small delay dodges the Chrome cancel()->speak() race that drops voice

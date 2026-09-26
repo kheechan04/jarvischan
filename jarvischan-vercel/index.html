@@ -1195,7 +1195,15 @@
     // here and reopened in done() below.
     releaseMic();
     if(clapOn && clapStream) closeClapMic();
+    // On iPhone a running AudioContext that has carried mic input keeps speech
+    // synthesis silent (not just quiet, and not the earpiece). Closing it fixed
+    // that but broke the next turn's level meter, so it is only suspended while
+    // replying; startMicMeter() resumes it once the mic is live again.
+    try{ if(audioCtx && audioCtx.state==="running") audioCtx.suspend(); }catch(e){}
     speechSynthesis.cancel();
+    // iOS can also leave the engine paused after an audio interruption, with
+    // speak() then queuing silently forever.
+    try{ speechSynthesis.resume(); }catch(e){}
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
     if(!loggedSpoke || (ko && loggedSpoke!=="ko")){ loggedSpoke=ko?"ko":true;
@@ -1238,13 +1246,14 @@
       // stuck on "responding" forever. This fallback moves on regardless, sized
       // generously so it never cuts off genuine speech first.
       const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
-      u.onstart=()=>{ setMode("speaking");
+      u.onstart=()=>{ if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
       u.onboundary=()=>{ S.speakLevel=0.7+Math.random()*0.3; };
       u.onend=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); speakNext(); } };
-      u.onerror=()=>{ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } };
+      u.onerror=ev=>{ log("tts error <b>"+String(ev&&ev.error||"?").replace(/[<>&]/g,"")+"</b>");
+        if(!advanced){ advanced=true; clearTimeout(fallback); done(); } };
       try{ speechSynthesis.speak(u); }catch(e){ if(!advanced){ advanced=true; clearTimeout(fallback); done(); } }
     };
     // small delay dodges the Chrome cancel()->speak() race that drops voice
