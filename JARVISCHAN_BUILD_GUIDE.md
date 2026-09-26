@@ -599,7 +599,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **메신저 링크 미리보기**: Open Graph·`description`·`twitter:card`·canonical 태그가 없어서 카카오톡 등에서 링크 카드 없이 글자로만 보였다. `<head>`에 넣었고 주소는 `https://jarvischan.vercel.app` 절대 경로다. 직접 배포하는 사람은 자기 도메인으로 바꿔야 한다. 카카오톡은 미리보기를 캐시하므로 배포 후 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 뜬다.
 - **링크 옆 사이트 아이콘**: 메신저와 브라우저 상당수는 `<link rel="icon">`보다 루트의 `/favicon.ico`를 먼저 찾는데 이 파일이 없어서 404였다. `icon-512.png`로 `favicon.ico`(16·32·48px)와 `icons/icon-32.png`를 만들어 넣고 `<head>`에 연결했다.
 - **폰 카카오톡에서 카드가 안 뜨던 문제**: 노트북(PC 카톡)에서는 카드가 떴지만 폰에서는 글자로만 보였다. 폰에서 카드가 잘 뜨는 shadow-mitts와 비교하면 미리보기 이미지가 512px 정사각 아이콘(`summary`)이었던 것이 달랐다. shadow-mitts와 같은 형식으로 1200×630 `og.png`를 새로 만들고(앱 아이콘 + 이름 + 한 줄 소개), `twitter:card`를 `summary_large_image`로, 제목·설명을 한국어로 바꾸고 `og:locale` `ko_KR`을 넣었다.
-- **아이폰에서 대답 후 웨이크워드가 다시 안 켜지던 문제**: 소리 수정 뒤 아이폰 Safari에서 대답은 들리지만 그다음 "자비스"에 반응하지 않았다. 추정 원인은 두 가지다. (1) 대답이 끝나면 오디오 세션을 `playback`에서 `auto`로만 돌려서, iOS가 음성 인식을 다시 시작하지 못했다. (2) 재시작이 한 번 `not-allowed`로 실패하면 기존 코드가 웨이크워드를 아예 꺼 버렸다. 이제 웨이크워드나 박수 깨우기가 켜져 있으면 대답 직후 세션을 `play-and-record`로 되돌리고, 인식기를 시작하기 직전에도 `play-and-record`로 맞춘다. `not-allowed`는 한 번도 시작된 적이 없을 때만 진짜 차단으로 보고 끄며, 그 밖의 오류는 로그를 남기고 1.5초 뒤 다시 시도한다. 실제 기기 확인은 아직 안 했다.
+- **아이폰에서 대답 후 웨이크워드가 다시 안 켜지던 문제**: 소리 수정 뒤 아이폰 Safari에서 대답은 들리지만 그다음 "자비스"에 반응하지 않았다. 추정 원인은 두 가지다. (1) 대답이 끝나면 오디오 세션을 `playback`에서 `auto`로만 돌려서, iOS가 음성 인식을 다시 시작하지 못했다. (2) 재시작이 한 번 `not-allowed`로 실패하면 기존 코드가 웨이크워드를 아예 꺼 버렸다. 이제 웨이크워드나 박수 깨우기가 켜져 있으면 대답 직후 세션을 `play-and-record`로 되돌리고, 인식기를 시작하기 직전에도 `play-and-record`로 맞춘다. `not-allowed`는 한 번도 시작된 적이 없을 때만 진짜 차단으로 보고 끄며, 그 밖의 오류는 로그를 남기고 1.5초 뒤 다시 시도한다. **아이폰에서 확인해 보니 여전히 안 됐다**(첫 대화만 되고, 그 뒤로는 불러도 반응이 없고 마이크 표시도 안 뜸). 원인을 좁히려고 웨이크워드 인식기의 시작 시도(당시 오디오 세션 값)·`onstart`·`onaudiostart`·`onerror`(모든 오류)·`onend`·`start()` 예외를 전부 로그에 남기게 했다. 폰에서는 로그 패널이 기본으로 숨겨져 있으므로 `?debug=1`로 연다.
 
 ---
 
@@ -609,7 +609,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 109,487 bytes | `ee5975eecc07343e…` |
+| `index.html` | 109,897 bytes | `ec14f3f487abf2b0…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -619,7 +619,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=ee5975eecc07343ef048421e4f80f8f8065f1153ee165b5a2cf2025a79c4df22 -->
+<!-- FILE: index.html sha256=ec14f3f487abf2b05c1073e459db3f1f0d49ee159473eaef2b58c84d19024f6b -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -2592,7 +2592,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         setTimeout(proceed,400);
       }
     };
-    wwRec.onstart=()=>{ wwEverStarted=true; };
+    wwRec.onstart=()=>{ wwEverStarted=true; log("wake-word <span class='ok'>listening</span>"); };
+    wwRec.onaudiostart=()=>{ log("wake-word <span class='ok'>audio in</span>"); };
     wwRec.onerror=err=>{
       // Only a refusal on the very first start means the mic is really blocked.
       // iOS Safari also reports not-allowed when a restart after a reply races
@@ -2601,15 +2602,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
         turnWakeWordOff(); return;
       }
+      log("wake-word error <b>"+String(err.error||"?").replace(/[<>&]/g,"")+"</b>");
       if(err.error!=="no-speech" && err.error!=="aborted"){
         log("wake-word <span class='rt'>"+String(err.error||"?").replace(/[<>&]/g,"")+" · retrying</span>");
         wwRetryAt=Date.now()+1500;
       }
       // the watcher below restarts it
     };
-    wwRec.onend=()=>{ wwActive=false; };
+    wwRec.onend=()=>{ wwActive=false; log("wake-word <span class='rt'>ended</span>"); };
+    log("wake-word start · session "+(navigator.audioSession?navigator.audioSession.type:"n/a"));
     try{ setAudioSession("play-and-record"); wwRec.start(); wwActive=true; wwStarted=Date.now(); }
-    catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>restart failed · retrying</span>"); }
+    catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>start threw "+String(e&&e.name||e).replace(/[<>&]/g,"")+" · retrying</span>"); }
   }
   function turnWakeWordOff(){
     wwOn=false; wwEverStarted=false; wwRetryAt=0; clearInterval(wwWatch); stopWakeWordRec();

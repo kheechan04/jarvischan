@@ -1969,7 +1969,8 @@
         setTimeout(proceed,400);
       }
     };
-    wwRec.onstart=()=>{ wwEverStarted=true; };
+    wwRec.onstart=()=>{ wwEverStarted=true; log("wake-word <span class='ok'>listening</span>"); };
+    wwRec.onaudiostart=()=>{ log("wake-word <span class='ok'>audio in</span>"); };
     wwRec.onerror=err=>{
       // Only a refusal on the very first start means the mic is really blocked.
       // iOS Safari also reports not-allowed when a restart after a reply races
@@ -1978,15 +1979,17 @@
         log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
         turnWakeWordOff(); return;
       }
+      log("wake-word error <b>"+String(err.error||"?").replace(/[<>&]/g,"")+"</b>");
       if(err.error!=="no-speech" && err.error!=="aborted"){
         log("wake-word <span class='rt'>"+String(err.error||"?").replace(/[<>&]/g,"")+" · retrying</span>");
         wwRetryAt=Date.now()+1500;
       }
       // the watcher below restarts it
     };
-    wwRec.onend=()=>{ wwActive=false; };
+    wwRec.onend=()=>{ wwActive=false; log("wake-word <span class='rt'>ended</span>"); };
+    log("wake-word start · session "+(navigator.audioSession?navigator.audioSession.type:"n/a"));
     try{ setAudioSession("play-and-record"); wwRec.start(); wwActive=true; wwStarted=Date.now(); }
-    catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>restart failed · retrying</span>"); }
+    catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>start threw "+String(e&&e.name||e).replace(/[<>&]/g,"")+" · retrying</span>"); }
   }
   function turnWakeWordOff(){
     wwOn=false; wwEverStarted=false; wwRetryAt=0; clearInterval(wwWatch); stopWakeWordRec();
