@@ -598,16 +598,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **폰·패드에서 답변 소리가 안 나던 문제**: 원인이 세 가지였다. (1) iOS Safari와 안드로이드 크롬은 `speechSynthesis`를 사용자 제스처 안에서 한 번 시작해야 이후 발화를 허용하는데, 답변은 `/api/chat` 응답을 기다린 뒤에 말해서 조용히 버려졌다. 첫 탭·키 입력 때 음량 0짜리 빈 발화를 한 번 보내서 엔진을 연다(`unlockAudio`). (2) Whisper 녹음이 끝나도 마이크 스트림을 닫지 않아서 기기가 통화 오디오 모드에 머물렀고, 출력이 수화기로 가거나 거의 안 들렸다. 녹음이 끝나면 `releaseMic()`으로 트랙과 `AudioContext`를 닫고 다음 탭에 다시 연다. (3) 박수 깨우기는 마이크를 계속 열어 두므로 발화 시작 때 닫고 발화가 끝나면 다시 연다. 웨이크워드 인식기는 원래 대기 상태가 아닐 때 멈추므로 따로 손대지 않았다. Safari 16.4+의 `navigator.audioSession`으로 말하는 동안 `playback`(무음 스위치 무시), 마이크를 열 때 `play-and-record`, 발화가 끝나면 `auto`로 둔다.
 - **메신저 링크 미리보기**: Open Graph·`description`·`twitter:card`·canonical 태그가 없어서 카카오톡 등에서 링크 카드 없이 글자로만 보였다. `<head>`에 넣었고 주소는 `https://jarvischan.vercel.app` 절대 경로다. 직접 배포하는 사람은 자기 도메인으로 바꿔야 한다. 카카오톡은 미리보기를 캐시하므로 배포 후 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 뜬다.
 - **링크 옆 사이트 아이콘**: 메신저와 브라우저 상당수는 `<link rel="icon">`보다 루트의 `/favicon.ico`를 먼저 찾는데 이 파일이 없어서 404였다. `icon-512.png`로 `favicon.ico`(16·32·48px)와 `icons/icon-32.png`를 만들어 넣고 `<head>`에 연결했다.
+- **폰 카카오톡에서 카드가 안 뜨던 문제**: 노트북(PC 카톡)에서는 카드가 떴지만 폰에서는 글자로만 보였다. 폰에서 카드가 잘 뜨는 shadow-mitts와 비교하면 미리보기 이미지가 512px 정사각 아이콘(`summary`)이었던 것이 달랐다. shadow-mitts와 같은 형식으로 1200×630 `og.png`를 새로 만들고(앱 아이콘 + 이름 + 한 줄 소개), `twitter:card`를 `summary_large_image`로, 제목·설명을 한국어로 바꾸고 `og:locale` `ko_KR`을 넣었다.
 
 ---
 
 ## 부록 — 파일 원본
 
-아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`icons/`의 PNG 5개와 `favicon.ico`도 바이너리라 부록에 없어요** — 저장소의 `jarvischan-vercel/`에서 그대로 쓰세요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 7개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
+아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`icons/`의 PNG 5개와 `favicon.ico`·`og.png`도 바이너리라 부록에 없어요** — 저장소의 `jarvischan-vercel/`에서 그대로 쓰세요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 7개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 108,235 bytes | `d4afac8f4d3d2704…` |
+| `index.html` | 108,537 bytes | `85a3966c84657f0c…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -617,7 +618,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=d4afac8f4d3d27041e4b022bf388ef32f36b16fb34614cd0b6303bc80370fef2 -->
+<!-- FILE: index.html sha256=85a3966c84657f0caf399836b3318fb421d79fe0fe92a528577b684405626500 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -625,18 +626,19 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvischan</title>
-<meta name="description" content="Voice command center — talk in Korean or English and get spoken answers.">
+<meta name="description" content="한국어나 영어로 말하면 목소리로 답하는 음성 비서. 날씨·대기질·환율·위키·타이머 같은 실제 도구를 쓰고, 내 컴퓨터의 앱도 열어요.">
 <!-- Link previews: messengers (KakaoTalk, iMessage, Slack…) build the card from these.
      Image and page URLs must be absolute; self-deployers swap in their own domain. -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Jarvischan">
-<meta property="og:title" content="Jarvischan">
-<meta property="og:description" content="Voice command center — talk in Korean or English and get spoken answers.">
+<meta property="og:title" content="Jarvischan — 말하면 대답하는 음성 비서">
+<meta property="og:description" content="한국어나 영어로 말하면 목소리로 답하는 음성 비서. 날씨·대기질·환율·위키·타이머 같은 실제 도구를 쓰고, 내 컴퓨터의 앱도 열어요.">
 <meta property="og:url" content="https://jarvischan.vercel.app/">
-<meta property="og:image" content="https://jarvischan.vercel.app/icons/icon-512.png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://jarvischan.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://jarvischan.vercel.app/">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#020810">
