@@ -1186,6 +1186,29 @@
     try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){}
   }
   ["pointerdown","touchend","keydown"].forEach(t=>window.addEventListener(t,unlockAudio,true));
+  // The silent unlock above isn't enough on iPhone when the mic comes first:
+  // iOS skips an empty utterance, and once the mic or recognizer is running
+  // before speech has ever played, replies stay silent for the whole page
+  // (and the wake word stops after one turn). Confirmed live: typing one
+  // message first made voice and wake word work from then on. So the first
+  // mic, wake-word or clap tap speaks a short real line and only opens the mic
+  // when it ends. Must be called synchronously inside the tap.
+  let ttsWarm=false;
+  function warmTTS(then, ko, en){
+    if(ttsWarm || !("speechSynthesis" in window)){ then(); return; }
+    let went=false;
+    const go=()=>{ if(went) return; went=true; clearTimeout(t); then(); };
+    const t=setTimeout(go,2500);
+    try{
+      const koNow=lastLang==="ko" || (langPref==="auto" && /^ko/i.test(navigator.language||"")), v=liveVoice(koNow?"ko":"en");
+      const u=new SpeechSynthesisUtterance(koNow?ko:en);
+      if(v){ u.voice=v; u.lang=v.lang; } else u.lang=koNow?"ko-KR":"en-US";
+      u.rate=1.05;
+      u.onstart=()=>{ ttsWarm=true; log("tts <span class='ok'>warmed up</span>"); };
+      u.onend=go; u.onerror=go;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }catch(e){ go(); }
+  }
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
@@ -1246,7 +1269,7 @@
       // stuck on "responding" forever. This fallback moves on regardless, sized
       // generously so it never cuts off genuine speech first.
       const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
-      u.onstart=()=>{ if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
+      u.onstart=()=>{ ttsWarm=true; if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
@@ -1797,8 +1820,9 @@
     try{ rec.lang=srLang(); rec.start(); }
     catch(e){ /* InvalidStateError: already started — ignore */ }
   }
-  micBtn.addEventListener("click",toggleListen);
-  cv.addEventListener("click",toggleListen);
+  const listenTap=()=>warmTTS(toggleListen, "네.", "Yes?");
+  micBtn.addEventListener("click",listenTap);
+  cv.addEventListener("click",listenTap);
 
   function submitText(){
     const v=txt.value.trim(); if(!v) return;
@@ -1901,7 +1925,8 @@
     log('<span class="rt">✦ clap-wake</span> → listening');
     toggleListen();
   }
-  clapBtn.addEventListener("click", async ()=>{
+  clapBtn.addEventListener("click", ()=>{ if(clapOn) toggleClap(); else warmTTS(toggleClap, "박수 두 번 치면 들을게요.", "Clap twice when you need me."); });
+  async function toggleClap(){
     if(clapOn){
       clapOn=false; clearInterval(clapTimer); closeClapMic();
       clapBtn.setAttribute("aria-pressed","false");
@@ -1919,7 +1944,7 @@
     }else{
       clapLbl.textContent="Clap ×2 to wake · off";
     }
-  });
+  }
 
   /* ==========================================================
      WAKE WORD — say "Jarvischan" (or "자비스찬") from anywhere in the
@@ -2012,6 +2037,9 @@
   wwBtn.addEventListener("click", ()=>{
     if(wwOn){ turnWakeWordOff(); return; }
     if(!SR){ banner.textContent='This browser can\'t listen continuously for a wake word — try Chrome, or use Clap ×2.'; return; }
+    warmTTS(armWakeWord, "자비스찬이라고 불러 주세요.", "Say Jarvischan when you need me.");
+  });
+  function armWakeWord(){
     if(clapOn){ clapOn=false; clearInterval(clapTimer); closeClapMic(); clapBtn.setAttribute("aria-pressed","false"); clapLbl.textContent="Clap ×2 to wake · off"; }
     wwOn=true;
     wwBtn.setAttribute("aria-pressed","true");
@@ -2034,7 +2062,7 @@
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
-  });
+  }
 
   /* ==========================================================
      LOCAL AGENT — a small companion program the user runs on this

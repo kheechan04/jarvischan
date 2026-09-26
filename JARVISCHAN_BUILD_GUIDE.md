@@ -603,6 +603,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **첫 진단 결과(아이폰 Safari)**: 새로 연 페이지에서 웨이크워드를 켜자 `start · session auto` → `listening` → `audio in`까지 찍히고 주소창 마이크 표시도 떴지만, 그 뒤로 "자비스찬"을 불러도 아무 로그가 없었다. 인식기는 켜져 있고 소리도 들어가는데 결과(`onresult`)가 안 오거나 정규식에 안 걸리는 것이다. 둘을 가르려고 인식기가 받아 적은 글자(바뀔 때마다 한 번)와 웨이크워드 감시기가 보는 화면 모드 변화도 로그에 남기게 했다.
 - **두 번째 진단 결과와 되돌림**: 웨이크워드로 첫 질문은 녹음·인식·날씨 조회·`tts → 유나 (ko-KR)`까지 정상이고 소리 파형도 움직였지만 **소리가 다시 안 났다.** 대답 뒤에는 웨이크워드도, 마이크 버튼을 탭한 녹음도 말을 못 알아들었다. 처음 소리가 나게 고쳤을 때는 웨이크워드를 켜지 않았고, 그 뒤 추가한 `navigator.audioSession` 전환(`playback`↔`play-and-record`↔`auto`)이 공통 원인으로 보인다. 대화 중에 세션 종류를 바꾸면 iOS가 음성 출력을 묻고 마이크 녹음도 막는다. 그래서 `audioSession` 사용을 전부 뺐다. 또 `releaseMic()`이 `AudioContext`까지 닫아서, 다음 녹음 때 탭 밖에서 새 컨텍스트가 만들어지고 iOS에서 `suspended`로 남아 음량이 0으로 읽혔을 수 있다. 이제 컨텍스트와 분석기는 유지하고 스트림과 소스 노드만 바꾼다. 컨텍스트는 탭할 때마다 만들거나 깨우고, 탭 밖의 `resume()`은 300ms까지만 기다린다. 컨텍스트가 `running`이 아니면 로그에 남긴다.
 - **연속 대화는 해결, 소리는 여전히 안 남**: 위 수정으로 아이폰에서 웨이크워드 연속 대화가 된다고 사용자가 확인했다. 하지만 대답 소리는 무음 모드가 아니고 귀에 대도 들리지 않았다. 소리가 났던 버전(`1ec3d74`)과의 남은 차이는 녹음 뒤 `AudioContext`를 닫느냐였다. 마이크 입력이 연결됐던 컨텍스트가 돌고 있으면 iOS 음성 합성이 아예 소리를 안 내는 것으로 보고, 대답하는 동안만 `audioCtx.suspend()`로 멈춘다. 다음 녹음 때 `startMicMeter()`가 마이크를 연 뒤 다시 깨운다. 닫지는 않으므로 연속 대화 쪽 수정은 그대로다. 오디오가 끊긴 뒤 iOS가 음성 엔진을 일시정지 상태로 남기는 경우에 대비해 `speechSynthesis.resume()`도 부르고, 첫 조각의 `onstart`(`tts started`)와 모든 `onerror` 코드를 로그에 남긴다.
+- **진짜 원인: 마이크가 음성보다 먼저 켜지는 순서**: 위 수정 뒤에도 소리가 안 났다. 사용자가 나눠서 시험해 보니 텍스트로 `안녕`·`hello`를 먼저 보내면 소리가 나고, 그 뒤로는 웨이크워드 연속 대화와 대답 소리가 모두 정상이었다. 반대로 새로고침하고 처음부터 음성 인식으로 시작하면 소리는 처음부터 안 나고 웨이크워드도 첫 번째만 반응했다. 목소리는 사만다였다. 즉 아이폰에서는 음성 합성이 마이크나 음성 인식보다 먼저 한 번 실제로 소리를 내야 한다. 첫 탭의 음량 0 빈 발화(`" "`)는 iOS가 건너뛰어서 이 역할을 못 했다. 이제 처음 마이크·웨이크워드·박수 버튼을 누르면 그 탭 안에서 짧은 확인 음성("네." / "자비스찬이라고 불러 주세요." / "박수 두 번 치면 들을게요.", 영어 설정이면 영어)을 먼저 말하고, 끝난 뒤(최대 2.5초)에 마이크를 연다(`warmTTS`). 음성이 한 번이라도 시작되면 다시 하지 않는다. 이 순서 문제가 앞의 audioSession·AudioContext 시도 때 증상이 들쭉날쭉했던 이유로 보인다.
 
 ---
 
@@ -612,7 +613,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 110,968 bytes | `c441a921888002ed…` |
+| `index.html` | 112,587 bytes | `847ed8b59fe3955b…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -622,7 +623,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=c441a921888002ed45cb983d43a931a955b16b931ba3a79bbd8ab86f42261c22 -->
+<!-- FILE: index.html sha256=847ed8b59fe3955b0547ff9b39afda89f7577ecb835102a9e44dc152fb00d24c -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1812,6 +1813,29 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){}
   }
   ["pointerdown","touchend","keydown"].forEach(t=>window.addEventListener(t,unlockAudio,true));
+  // The silent unlock above isn't enough on iPhone when the mic comes first:
+  // iOS skips an empty utterance, and once the mic or recognizer is running
+  // before speech has ever played, replies stay silent for the whole page
+  // (and the wake word stops after one turn). Confirmed live: typing one
+  // message first made voice and wake word work from then on. So the first
+  // mic, wake-word or clap tap speaks a short real line and only opens the mic
+  // when it ends. Must be called synchronously inside the tap.
+  let ttsWarm=false;
+  function warmTTS(then, ko, en){
+    if(ttsWarm || !("speechSynthesis" in window)){ then(); return; }
+    let went=false;
+    const go=()=>{ if(went) return; went=true; clearTimeout(t); then(); };
+    const t=setTimeout(go,2500);
+    try{
+      const koNow=lastLang==="ko" || (langPref==="auto" && /^ko/i.test(navigator.language||"")), v=liveVoice(koNow?"ko":"en");
+      const u=new SpeechSynthesisUtterance(koNow?ko:en);
+      if(v){ u.voice=v; u.lang=v.lang; } else u.lang=koNow?"ko-KR":"en-US";
+      u.rate=1.05;
+      u.onstart=()=>{ ttsWarm=true; log("tts <span class='ok'>warmed up</span>"); };
+      u.onend=go; u.onerror=go;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }catch(e){ go(); }
+  }
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
@@ -1872,7 +1896,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // stuck on "responding" forever. This fallback moves on regardless, sized
       // generously so it never cuts off genuine speech first.
       const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
-      u.onstart=()=>{ if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
+      u.onstart=()=>{ ttsWarm=true; if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
@@ -2423,8 +2447,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     try{ rec.lang=srLang(); rec.start(); }
     catch(e){ /* InvalidStateError: already started — ignore */ }
   }
-  micBtn.addEventListener("click",toggleListen);
-  cv.addEventListener("click",toggleListen);
+  const listenTap=()=>warmTTS(toggleListen, "네.", "Yes?");
+  micBtn.addEventListener("click",listenTap);
+  cv.addEventListener("click",listenTap);
 
   function submitText(){
     const v=txt.value.trim(); if(!v) return;
@@ -2527,7 +2552,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     log('<span class="rt">✦ clap-wake</span> → listening');
     toggleListen();
   }
-  clapBtn.addEventListener("click", async ()=>{
+  clapBtn.addEventListener("click", ()=>{ if(clapOn) toggleClap(); else warmTTS(toggleClap, "박수 두 번 치면 들을게요.", "Clap twice when you need me."); });
+  async function toggleClap(){
     if(clapOn){
       clapOn=false; clearInterval(clapTimer); closeClapMic();
       clapBtn.setAttribute("aria-pressed","false");
@@ -2545,7 +2571,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     }else{
       clapLbl.textContent="Clap ×2 to wake · off";
     }
-  });
+  }
 
   /* ==========================================================
      WAKE WORD — say "Jarvischan" (or "자비스찬") from anywhere in the
@@ -2638,6 +2664,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   wwBtn.addEventListener("click", ()=>{
     if(wwOn){ turnWakeWordOff(); return; }
     if(!SR){ banner.textContent='This browser can\'t listen continuously for a wake word — try Chrome, or use Clap ×2.'; return; }
+    warmTTS(armWakeWord, "자비스찬이라고 불러 주세요.", "Say Jarvischan when you need me.");
+  });
+  function armWakeWord(){
     if(clapOn){ clapOn=false; clearInterval(clapTimer); closeClapMic(); clapBtn.setAttribute("aria-pressed","false"); clapLbl.textContent="Clap ×2 to wake · off"; }
     wwOn=true;
     wwBtn.setAttribute("aria-pressed","true");
@@ -2660,7 +2689,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
-  });
+  }
 
   /* ==========================================================
      LOCAL AGENT — a small companion program the user runs on this
