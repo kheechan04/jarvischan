@@ -597,16 +597,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 - **폰·패드에서 답변 소리가 안 나던 문제**: 원인이 세 가지였다. (1) iOS Safari와 안드로이드 크롬은 `speechSynthesis`를 사용자 제스처 안에서 한 번 시작해야 이후 발화를 허용하는데, 답변은 `/api/chat` 응답을 기다린 뒤에 말해서 조용히 버려졌다. 첫 탭·키 입력 때 음량 0짜리 빈 발화를 한 번 보내서 엔진을 연다(`unlockAudio`). (2) Whisper 녹음이 끝나도 마이크 스트림을 닫지 않아서 기기가 통화 오디오 모드에 머물렀고, 출력이 수화기로 가거나 거의 안 들렸다. 녹음이 끝나면 `releaseMic()`으로 트랙과 `AudioContext`를 닫고 다음 탭에 다시 연다. (3) 박수 깨우기는 마이크를 계속 열어 두므로 발화 시작 때 닫고 발화가 끝나면 다시 연다. 웨이크워드 인식기는 원래 대기 상태가 아닐 때 멈추므로 따로 손대지 않았다. Safari 16.4+의 `navigator.audioSession`으로 말하는 동안 `playback`(무음 스위치 무시), 마이크를 열 때 `play-and-record`, 발화가 끝나면 `auto`로 둔다.
 - **메신저 링크 미리보기**: Open Graph·`description`·`twitter:card`·canonical 태그가 없어서 카카오톡 등에서 링크 카드 없이 글자로만 보였다. `<head>`에 넣었고 주소는 `https://jarvischan.vercel.app` 절대 경로다. 직접 배포하는 사람은 자기 도메인으로 바꿔야 한다. 카카오톡은 미리보기를 캐시하므로 배포 후 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 뜬다.
+- **링크 옆 사이트 아이콘**: 메신저와 브라우저 상당수는 `<link rel="icon">`보다 루트의 `/favicon.ico`를 먼저 찾는데 이 파일이 없어서 404였다. `icon-512.png`로 `favicon.ico`(16·32·48px)와 `icons/icon-32.png`를 만들어 넣고 `<head>`에 연결했다.
 
 ---
 
 ## 부록 — 파일 원본
 
-아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`icons/`의 PNG 4개도 바이너리라 부록에 없어요** — 저장소의 `jarvischan-vercel/icons/`에서 그대로 쓰세요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 7개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
+아래 블록은 배포본과 **바이트 단위로 같아요.** 손으로 옮기지 말고 §5-1 스크립트로 꺼내세요. 각 블록 위의 `sha256`은 파일 끝 줄바꿈 1개를 포함한 값이에요. **`icons/`의 PNG 5개와 `favicon.ico`도 바이너리라 부록에 없어요** — 저장소의 `jarvischan-vercel/`에서 그대로 쓰세요. **`local-agent/`는 이 부록에 포함되지 않아요** — 별도 프로그램이라 §5-1 추출 스크립트가 다루는 7개 파일 목록 밖에 있고, 원본은 저장소의 `local-agent/` 폴더에 직접 있어요.
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 108,110 bytes | `99b469b9ce1435d0…` |
+| `index.html` | 108,235 bytes | `d4afac8f4d3d2704…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -616,7 +617,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=99b469b9ce1435d01c86d1264342b7a8c5cb4ad0d977bacd7ae8623dc002e8d2 -->
+<!-- FILE: index.html sha256=d4afac8f4d3d27041e4b022bf388ef32f36b16fb34614cd0b6303bc80370fef2 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -639,6 +640,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 <link rel="canonical" href="https://jarvischan.vercel.app/">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#020810">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
