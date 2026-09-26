@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvischan</title>
+<meta name="description" content="Voice command center — talk in Korean or English and get spoken answers.">
+<!-- Link previews: messengers (KakaoTalk, iMessage, Slack…) build the card from these.
+     Image and page URLs must be absolute; self-deployers swap in their own domain. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Jarvischan">
+<meta property="og:title" content="Jarvischan">
+<meta property="og:description" content="Voice command center — talk in Korean or English and get spoken answers.">
+<meta property="og:url" content="https://jarvischan.vercel.app/">
+<meta property="og:image" content="https://jarvischan.vercel.app/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://jarvischan.vercel.app/">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#020810">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -963,6 +976,7 @@
         // floor-tracking VAD below on phones/tablets. noiseSuppression and
         // echoCancellation stay on since those help Whisper transcription
         // instead of hurting it (see CLAP-TO-WAKE below for the contrast).
+        setAudioSession("play-and-record");
         micStream=await navigator.mediaDevices.getUserMedia({audio:{autoGainControl:false}});
         micError="";
       }
@@ -999,6 +1013,18 @@
   }
   function stopMicMeter(){
     cancelAnimationFrame(rafMic); S.micLevel=0;
+  }
+  // While a mic track stays live, iOS and Android keep the device in call-audio
+  // mode: output is routed to the earpiece or ducked to near silence, so the
+  // spoken reply can't be heard. Close the stream once the utterance is captured;
+  // the next tap reopens it. The context goes too since its source is bound to
+  // the old stream (beep() makes its own when audioCtx is null).
+  function releaseMic(){
+    if(recorder && recorder.state==="recording") return;
+    stopMicMeter();
+    try{ micStream && micStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    try{ audioCtx && audioCtx.close(); }catch(e){}
+    micStream=null; audioCtx=null; analyser=null; freqData=null;
   }
 
   /* ---- language: Auto (Whisper tells Korean from English) · 한국어 · English ---- */
@@ -1135,9 +1161,35 @@
       log('voice → <span class="ok">'+v.name.replace(/\(.*?\)/g,"").trim()+"</span>");
       try{ const u=new SpeechSynthesisUtterance("Voice ready."); u.voice=v; u.lang=v.lang; u.rate=1.02; speechSynthesis.speak(u); }catch(e){} }
   });
+  // iOS Safari and Android Chrome only let speechSynthesis talk once it has been
+  // started from inside a user gesture. Replies are spoken after an await (the
+  // /api/chat fetch), which is outside any gesture, so on phones and tablets they
+  // were silently dropped. Speaking an empty utterance on the first tap unlocks
+  // the engine for the rest of the page's life. The shared AudioContext (timer
+  // beep) is resumed on the same tap for the same reason.
+  let ttsUnlocked=false;
+  function unlockAudio(){
+    if(ttsUnlocked) return;
+    ttsUnlocked=true;
+    try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){}
+    try{ if(audioCtx && audioCtx.state==="suspended") audioCtx.resume(); }catch(e){}
+    ["pointerdown","touchend","keydown","click"].forEach(t=>window.removeEventListener(t,unlockAudio,true));
+  }
+  if("speechSynthesis" in window)
+    ["pointerdown","touchend","keydown","click"].forEach(t=>window.addEventListener(t,unlockAudio,true));
+  // Safari 16.4+: "playback" lets speech play past the ring/silent switch; the mic
+  // needs "play-and-record" while it's open. Browsers without the API skip this.
+  function setAudioSession(type){ try{ if(navigator.audioSession) navigator.audioSession.type=type; }catch(e){} }
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
+    // Every mic has to be closed while replying, or the phone stays in call-audio
+    // mode and the reply is inaudible. The wake-word recognizer already stops
+    // itself whenever the core isn't idle; the clap listener's stream is closed
+    // here and reopened in done() below.
+    releaseMic();
+    if(clapOn && clapStream) closeClapMic();
+    setAudioSession("playback");
     speechSynthesis.cancel();
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
@@ -1167,7 +1219,8 @@
       return out;
     },[]);
     let i=0;
-    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession("auto"); setMode("idle");
+      if(clapOn && !clapStream) startClapWake().then(ok=>{ if(!ok) log("clap-wake <span class='rt'>couldn't reopen mic</span>"); }); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
       const chunk=chunks[i++];
@@ -1680,7 +1733,7 @@
   }
 
   async function finishWhisper(mime, t0){
-    recorder=null; stopMicMeter();
+    recorder=null; releaseMic();
     const blob=new Blob(recChunks,{type:mime}); recChunks=[];
     if(Date.now()-t0<600 || blob.size<800){ setMode("idle"); banner.textContent=heardNothing(); return; }
     setMode("thinking");

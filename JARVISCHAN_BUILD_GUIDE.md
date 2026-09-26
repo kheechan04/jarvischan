@@ -593,6 +593,11 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 같은 컴퓨터를 같이 쓰는 사람은 같은 토큰(`~/.jarvischan-agent/token.txt`)을 그대로 쓰면 된다. 자기 컴퓨터에서 쓰려는 사람은 `local-agent/` 폴더를 통째로 복사해서(zip 등으로 전달), Node.js를 설치하고 그 폴더에서 `npm install`을 한 번 한 뒤 `start-agent.bat`만 실행하면 된다. 각자 자기 컴퓨터의 에이전트에만 페어링되고, 서로의 컴퓨터는 건드릴 수 없다. 자세한 사용법은 `local-agent/README.md`. **지금은 윈도우 전용**(`start`/`explorer`/`taskkill`/`rundll32` 사용)이라 맥에선 포팅이 필요하다(§7 표).
 
+### 업데이트 (2026-09-26) — 모바일 음성 출력과 링크 미리보기
+
+- **폰·패드에서 답변 소리가 안 나던 문제**: 원인이 세 가지였다. (1) iOS Safari와 안드로이드 크롬은 `speechSynthesis`를 사용자 제스처 안에서 한 번 시작해야 이후 발화를 허용하는데, 답변은 `/api/chat` 응답을 기다린 뒤에 말해서 조용히 버려졌다. 첫 탭·키 입력 때 음량 0짜리 빈 발화를 한 번 보내서 엔진을 연다(`unlockAudio`). (2) Whisper 녹음이 끝나도 마이크 스트림을 닫지 않아서 기기가 통화 오디오 모드에 머물렀고, 출력이 수화기로 가거나 거의 안 들렸다. 녹음이 끝나면 `releaseMic()`으로 트랙과 `AudioContext`를 닫고 다음 탭에 다시 연다. (3) 박수 깨우기는 마이크를 계속 열어 두므로 발화 시작 때 닫고 발화가 끝나면 다시 연다. 웨이크워드 인식기는 원래 대기 상태가 아닐 때 멈추므로 따로 손대지 않았다. Safari 16.4+의 `navigator.audioSession`으로 말하는 동안 `playback`(무음 스위치 무시), 마이크를 열 때 `play-and-record`, 발화가 끝나면 `auto`로 둔다.
+- **메신저 링크 미리보기**: Open Graph·`description`·`twitter:card`·canonical 태그가 없어서 카카오톡 등에서 링크 카드 없이 글자로만 보였다. `<head>`에 넣었고 주소는 `https://jarvischan.vercel.app` 절대 경로다. 직접 배포하는 사람은 자기 도메인으로 바꿔야 한다. 카카오톡은 미리보기를 캐시하므로 배포 후 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 뜬다.
+
 ---
 
 ## 부록 — 파일 원본
@@ -601,7 +606,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 104,651 bytes | `a6daf66b1f5a77d6…` |
+| `index.html` | 108,110 bytes | `99b469b9ce1435d0…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -611,7 +616,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=a6daf66b1f5a77d602db7d22288a4fa64f382b57bb611c25296c25ef3aa77536 -->
+<!-- FILE: index.html sha256=99b469b9ce1435d01c86d1264342b7a8c5cb4ad0d977bacd7ae8623dc002e8d2 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -619,6 +624,19 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvischan</title>
+<meta name="description" content="Voice command center — talk in Korean or English and get spoken answers.">
+<!-- Link previews: messengers (KakaoTalk, iMessage, Slack…) build the card from these.
+     Image and page URLs must be absolute; self-deployers swap in their own domain. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Jarvischan">
+<meta property="og:title" content="Jarvischan">
+<meta property="og:description" content="Voice command center — talk in Korean or English and get spoken answers.">
+<meta property="og:url" content="https://jarvischan.vercel.app/">
+<meta property="og:image" content="https://jarvischan.vercel.app/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://jarvischan.vercel.app/">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#020810">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -1578,6 +1596,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         // floor-tracking VAD below on phones/tablets. noiseSuppression and
         // echoCancellation stay on since those help Whisper transcription
         // instead of hurting it (see CLAP-TO-WAKE below for the contrast).
+        setAudioSession("play-and-record");
         micStream=await navigator.mediaDevices.getUserMedia({audio:{autoGainControl:false}});
         micError="";
       }
@@ -1614,6 +1633,18 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   }
   function stopMicMeter(){
     cancelAnimationFrame(rafMic); S.micLevel=0;
+  }
+  // While a mic track stays live, iOS and Android keep the device in call-audio
+  // mode: output is routed to the earpiece or ducked to near silence, so the
+  // spoken reply can't be heard. Close the stream once the utterance is captured;
+  // the next tap reopens it. The context goes too since its source is bound to
+  // the old stream (beep() makes its own when audioCtx is null).
+  function releaseMic(){
+    if(recorder && recorder.state==="recording") return;
+    stopMicMeter();
+    try{ micStream && micStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    try{ audioCtx && audioCtx.close(); }catch(e){}
+    micStream=null; audioCtx=null; analyser=null; freqData=null;
   }
 
   /* ---- language: Auto (Whisper tells Korean from English) · 한국어 · English ---- */
@@ -1750,9 +1781,35 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       log('voice → <span class="ok">'+v.name.replace(/\(.*?\)/g,"").trim()+"</span>");
       try{ const u=new SpeechSynthesisUtterance("Voice ready."); u.voice=v; u.lang=v.lang; u.rate=1.02; speechSynthesis.speak(u); }catch(e){} }
   });
+  // iOS Safari and Android Chrome only let speechSynthesis talk once it has been
+  // started from inside a user gesture. Replies are spoken after an await (the
+  // /api/chat fetch), which is outside any gesture, so on phones and tablets they
+  // were silently dropped. Speaking an empty utterance on the first tap unlocks
+  // the engine for the rest of the page's life. The shared AudioContext (timer
+  // beep) is resumed on the same tap for the same reason.
+  let ttsUnlocked=false;
+  function unlockAudio(){
+    if(ttsUnlocked) return;
+    ttsUnlocked=true;
+    try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){}
+    try{ if(audioCtx && audioCtx.state==="suspended") audioCtx.resume(); }catch(e){}
+    ["pointerdown","touchend","keydown","click"].forEach(t=>window.removeEventListener(t,unlockAudio,true));
+  }
+  if("speechSynthesis" in window)
+    ["pointerdown","touchend","keydown","click"].forEach(t=>window.addEventListener(t,unlockAudio,true));
+  // Safari 16.4+: "playback" lets speech play past the ring/silent switch; the mic
+  // needs "play-and-record" while it's open. Browsers without the API skip this.
+  function setAudioSession(type){ try{ if(navigator.audioSession) navigator.audioSession.type=type; }catch(e){} }
   let speakTimer=0;
   function speak(text){
     if(!("speechSynthesis" in window) || !text){ setMode("idle"); return; }
+    // Every mic has to be closed while replying, or the phone stays in call-audio
+    // mode and the reply is inaudible. The wake-word recognizer already stops
+    // itself whenever the core isn't idle; the clap listener's stream is closed
+    // here and reopened in done() below.
+    releaseMic();
+    if(clapOn && clapStream) closeClapMic();
+    setAudioSession("playback");
     speechSynthesis.cancel();
     const ko=HANGUL.test(text);                      // Korean text → Korean voice
     const v=liveVoice(ko?"ko":"en");
@@ -1782,7 +1839,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       return out;
     },[]);
     let i=0;
-    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setMode("idle"); };
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession("auto"); setMode("idle");
+      if(clapOn && !clapStream) startClapWake().then(ok=>{ if(!ok) log("clap-wake <span class='rt'>couldn't reopen mic</span>"); }); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
       const chunk=chunks[i++];
@@ -2295,7 +2353,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   }
 
   async function finishWhisper(mime, t0){
-    recorder=null; stopMicMeter();
+    recorder=null; releaseMic();
     const blob=new Blob(recChunks,{type:mime}); recChunks=[];
     if(Date.now()-t0<600 || blob.size<800){ setMode("idle"); banner.textContent=heardNothing(); return; }
     setMode("thinking");
