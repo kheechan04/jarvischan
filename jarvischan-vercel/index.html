@@ -1934,7 +1934,8 @@
   // up in normal conversation on its own, so loosening to it trades a little
   // precision for a lot of recall.
   const WAKE_RE=/\bjarvis\b|자비스/i;
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0;
+  let wwLastMode="";
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0, wwLastHeard="";
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -1949,6 +1950,10 @@
       // is often a real dictionary word that merely sounds similar, while the
       // wake word shows up a rank or two down.
       const alts=e.results[e.results.length-1];
+      // debug: show what the recognizer actually heard, once per change
+      const top=String((alts[0]&&alts[0].transcript)||"").trim();
+      if(top && top!==wwLastHeard){ wwLastHeard=top;
+        log("wake-word heard <b>\""+top.slice(-40).replace(/[<>&]/g,"")+"\"</b>"+(alts.isFinal?" · final":"")); }
       let said="";
       for(let i=0;i<alts.length;i++){ if(WAKE_RE.test(alts[i].transcript||"")){ said=alts[i].transcript; break; } }
       if(said){
@@ -2017,6 +2022,7 @@
       // so the very next tick's startWakeWordRec() below picks it back up.
       if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
       if(shouldListen && !wwActive && Date.now()>=wwRetryAt) startWakeWordRec();
+      if(S.mode!==wwLastMode){ wwLastMode=S.mode; log("wake-word sees mode <b>"+S.mode+"</b>"+(recActive?" · rec":"")); }
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();

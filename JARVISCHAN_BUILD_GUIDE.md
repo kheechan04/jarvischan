@@ -600,6 +600,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **링크 옆 사이트 아이콘**: 메신저와 브라우저 상당수는 `<link rel="icon">`보다 루트의 `/favicon.ico`를 먼저 찾는데 이 파일이 없어서 404였다. `icon-512.png`로 `favicon.ico`(16·32·48px)와 `icons/icon-32.png`를 만들어 넣고 `<head>`에 연결했다.
 - **폰 카카오톡에서 카드가 안 뜨던 문제**: 노트북(PC 카톡)에서는 카드가 떴지만 폰에서는 글자로만 보였다. 폰에서 카드가 잘 뜨는 shadow-mitts와 비교하면 미리보기 이미지가 512px 정사각 아이콘(`summary`)이었던 것이 달랐다. shadow-mitts와 같은 형식으로 1200×630 `og.png`를 새로 만들고(앱 아이콘 + 이름 + 한 줄 소개), `twitter:card`를 `summary_large_image`로, 제목·설명을 한국어로 바꾸고 `og:locale` `ko_KR`을 넣었다.
 - **아이폰에서 대답 후 웨이크워드가 다시 안 켜지던 문제**: 소리 수정 뒤 아이폰 Safari에서 대답은 들리지만 그다음 "자비스"에 반응하지 않았다. 추정 원인은 두 가지다. (1) 대답이 끝나면 오디오 세션을 `playback`에서 `auto`로만 돌려서, iOS가 음성 인식을 다시 시작하지 못했다. (2) 재시작이 한 번 `not-allowed`로 실패하면 기존 코드가 웨이크워드를 아예 꺼 버렸다. 이제 웨이크워드나 박수 깨우기가 켜져 있으면 대답 직후 세션을 `play-and-record`로 되돌리고, 인식기를 시작하기 직전에도 `play-and-record`로 맞춘다. `not-allowed`는 한 번도 시작된 적이 없을 때만 진짜 차단으로 보고 끄며, 그 밖의 오류는 로그를 남기고 1.5초 뒤 다시 시도한다. **아이폰에서 확인해 보니 여전히 안 됐다**(첫 대화만 되고, 그 뒤로는 불러도 반응이 없고 마이크 표시도 안 뜸). 원인을 좁히려고 웨이크워드 인식기의 시작 시도(당시 오디오 세션 값)·`onstart`·`onaudiostart`·`onerror`(모든 오류)·`onend`·`start()` 예외를 전부 로그에 남기게 했다. 폰에서는 로그 패널이 기본으로 숨겨져 있으므로 `?debug=1`로 연다.
+- **첫 진단 결과(아이폰 Safari)**: 새로 연 페이지에서 웨이크워드를 켜자 `start · session auto` → `listening` → `audio in`까지 찍히고 주소창 마이크 표시도 떴지만, 그 뒤로 "자비스찬"을 불러도 아무 로그가 없었다. 인식기는 켜져 있고 소리도 들어가는데 결과(`onresult`)가 안 오거나 정규식에 안 걸리는 것이다. 둘을 가르려고 인식기가 받아 적은 글자(바뀔 때마다 한 번)와 웨이크워드 감시기가 보는 화면 모드 변화도 로그에 남기게 했다.
 
 ---
 
@@ -609,7 +610,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 109,897 bytes | `ec14f3f487abf2b0…` |
+| `index.html` | 110,364 bytes | `db08be75d0b2e4b6…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -619,7 +620,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=ec14f3f487abf2b05c1073e459db3f1f0d49ee159473eaef2b58c84d19024f6b -->
+<!-- FILE: index.html sha256=db08be75d0b2e4b66f2fdbb0d7f1351c40820008e0afa57f59d7f0c07e749e92 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -2557,7 +2558,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // up in normal conversation on its own, so loosening to it trades a little
   // precision for a lot of recall.
   const WAKE_RE=/\bjarvis\b|자비스/i;
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0;
+  let wwLastMode="";
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0, wwLastHeard="";
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -2572,6 +2574,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // is often a real dictionary word that merely sounds similar, while the
       // wake word shows up a rank or two down.
       const alts=e.results[e.results.length-1];
+      // debug: show what the recognizer actually heard, once per change
+      const top=String((alts[0]&&alts[0].transcript)||"").trim();
+      if(top && top!==wwLastHeard){ wwLastHeard=top;
+        log("wake-word heard <b>\""+top.slice(-40).replace(/[<>&]/g,"")+"\"</b>"+(alts.isFinal?" · final":"")); }
       let said="";
       for(let i=0;i<alts.length;i++){ if(WAKE_RE.test(alts[i].transcript||"")){ said=alts[i].transcript; break; } }
       if(said){
@@ -2640,6 +2646,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // so the very next tick's startWakeWordRec() below picks it back up.
       if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
       if(shouldListen && !wwActive && Date.now()>=wwRetryAt) startWakeWordRec();
+      if(S.mode!==wwLastMode){ wwLastMode=S.mode; log("wake-word sees mode <b>"+S.mode+"</b>"+(recActive?" · rec":"")); }
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
