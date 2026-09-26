@@ -17,6 +17,7 @@
 - **로컬 에이전트 (선택, 윈도우 전용)** — 내 컴퓨터에서 앱·웹 주소·파일을
   열고 닫고, 스크린샷을 찍고, 볼륨을 바꾸고, 화면을 잠가요.
 - **앱처럼 설치** — 크롬에서 PWA로 설치하거나 아이폰 홈 화면에 추가할 수 있어요.
+  아이폰·아이패드 Safari에서도 음성 대화와 웨이크워드가 이어서 동작해요.
 - **운영비 0원** — Vercel Hobby 플랜과 Groq 무료 등급만으로 돌아가요.
 
 ## 저장소 구성
@@ -35,7 +36,7 @@
 3. 환경변수 `GROQ_API_KEY`와 `JARVIS_PASSWORD`를 넣고 다시 배포해요.
 
 자세한 내용은 [`jarvischan-vercel/README.md`](jarvischan-vercel/README.md)를,
-로컬 에이전트 설정은 [`local-agent/README.md`](local-agent/README.md)를 참고하세요. 직접 배포한 주소에서 로컬 에이전트를 쓰려면 `local-agent/agent.js`의 `ALLOWED_ORIGINS`에 그 주소를 추가해야 해요.
+로컬 에이전트 설정은 [`local-agent/README.md`](local-agent/README.md)를 참고하세요. 직접 배포한 주소에서 로컬 에이전트를 쓰려면 `local-agent/agent.js`의 `ALLOWED_ORIGINS`에 그 주소를 추가해야 해요. 메신저 링크 미리보기도 `jarvischan-vercel/index.html`의 `og:url`·`og:image`·`canonical`을 내 주소로 바꿔야 제대로 떠요.
 
 ## 라이선스
 

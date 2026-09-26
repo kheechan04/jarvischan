@@ -448,6 +448,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | (안전) 앱 닫기 명령이 저장 여부를 묻지 않고 바로 강제 종료함 | `taskkill /F`를 무조건 써서, 메모장·VS Code 등에 저장 안 한 내용이 있어도 그냥 날아갔다 | 기본은 `/F` 없이 정상 종료를 요청하고(앱이 저장 여부를 직접 물을 수 있게) 프로세스가 실제로 사라졌는지 확인한다. 강제 종료는 `force:true`를 명시적으로 받을 때만 하고, LLM은 사용자가 "강제로 꺼줘"라고 할 때만 그 값을 쓴다 |
 | 로컬 에이전트를 테스트한 뒤 사용자가 켜 둔 에이전트까지 꺼져서 페이지의 Local agent 연결이 끊김 (2026-09-25) | 테스트용 에이전트를 끄면서 명령줄에 `agent.js`가 들어간 node 프로세스를 전부 종료했다. `start-agent.bat`로 켠 진짜 에이전트도 같은 이름이라 같이 꺼졌다 | 테스트는 `JARVIS_AGENT_PORT=8799 node agent.js`처럼 **다른 포트**로 띄우고, 끌 때는 그 프로세스만 **PID로** 종료한다. 이름 패턴으로 한꺼번에 종료하지 않는다. 끊겼으면 `start-agent.bat`를 다시 실행한다 |
 | Git Bash에서 `vercel api /v9/projects/…`가 `Invalid arguments. Use an API path starting with /`로 실패 | Git Bash(MSYS)가 `/`로 시작하는 인자를 윈도우 경로(`C:/Program Files/Git/v9/…`)로 바꿔서 넘긴다 | 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙인다. 팀 프로젝트라 `?teamId=<.vercel/project.json의 orgId>`도 필요하다 |
+| 아이폰·아이패드에서 대답 소리가 안 나고(무음 모드도, 수화기도 아님), 웨이크워드도 첫 대화 뒤로 반응 안 함. 텍스트로 먼저 대화하면 둘 다 정상 | iOS에서는 음성 합성이 마이크·음성 인식보다 먼저 한 번 실제로 재생돼야 한다. 첫 탭의 음량 0 빈 발화는 iOS가 건너뛰어서 효과가 없었다. `navigator.audioSession` 전환은 오히려 소리와 마이크를 막았다 | 처음 마이크·웨이크워드·박수 버튼을 누르면 그 탭 안에서 짧은 확인 음성을 먼저 말하고, 끝난 뒤 마이크를 연다(`warmTTS`). `audioSession`은 쓰지 않는다. 녹음이 끝나면 마이크 스트림은 닫되 `AudioContext`는 닫지 않는다(§8 2026-09-26) |
 
 ---
 
@@ -468,11 +469,12 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ## 8. 현재 상태와 진행 기록
 
-### 지금 상태 (2026-09-25)
+### 지금 상태 (2026-09-26)
 
 - 배포: `https://jarvischan.vercel.app`, Vercel 프로젝트 `khchan04/jarvischan-vercel`(Root Directory `jarvischan-vercel`). `git push`하면 자동 배포된다(§5-3b).
 - 저장소: `https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스. README는 전부 한국어.
-- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 9개), PWA 설치.
+- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 9개), PWA 설치, 메신저 링크 미리보기.
+- 모바일: 아이폰 Safari에서 웨이크워드 연속 대화와 대답 소리를 사용자가 확인했다(2026-09-26). 처음 마이크를 쓰기 전에 짧은 확인 음성을 먼저 낸다(`warmTTS`).
 - 포트폴리오: https://kheechan04.github.io/jarvischan/
 - 아래는 날짜순 진행 기록이다. 옛 주소나 옛 이름이 나오는 건 그때 기록이라서다.
 
@@ -604,6 +606,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **두 번째 진단 결과와 되돌림**: 웨이크워드로 첫 질문은 녹음·인식·날씨 조회·`tts → 유나 (ko-KR)`까지 정상이고 소리 파형도 움직였지만 **소리가 다시 안 났다.** 대답 뒤에는 웨이크워드도, 마이크 버튼을 탭한 녹음도 말을 못 알아들었다. 처음 소리가 나게 고쳤을 때는 웨이크워드를 켜지 않았고, 그 뒤 추가한 `navigator.audioSession` 전환(`playback`↔`play-and-record`↔`auto`)이 공통 원인으로 보인다. 대화 중에 세션 종류를 바꾸면 iOS가 음성 출력을 묻고 마이크 녹음도 막는다. 그래서 `audioSession` 사용을 전부 뺐다. 또 `releaseMic()`이 `AudioContext`까지 닫아서, 다음 녹음 때 탭 밖에서 새 컨텍스트가 만들어지고 iOS에서 `suspended`로 남아 음량이 0으로 읽혔을 수 있다. 이제 컨텍스트와 분석기는 유지하고 스트림과 소스 노드만 바꾼다. 컨텍스트는 탭할 때마다 만들거나 깨우고, 탭 밖의 `resume()`은 300ms까지만 기다린다. 컨텍스트가 `running`이 아니면 로그에 남긴다.
 - **연속 대화는 해결, 소리는 여전히 안 남**: 위 수정으로 아이폰에서 웨이크워드 연속 대화가 된다고 사용자가 확인했다. 하지만 대답 소리는 무음 모드가 아니고 귀에 대도 들리지 않았다. 소리가 났던 버전(`1ec3d74`)과의 남은 차이는 녹음 뒤 `AudioContext`를 닫느냐였다. 마이크 입력이 연결됐던 컨텍스트가 돌고 있으면 iOS 음성 합성이 아예 소리를 안 내는 것으로 보고, 대답하는 동안만 `audioCtx.suspend()`로 멈춘다. 다음 녹음 때 `startMicMeter()`가 마이크를 연 뒤 다시 깨운다. 닫지는 않으므로 연속 대화 쪽 수정은 그대로다. 오디오가 끊긴 뒤 iOS가 음성 엔진을 일시정지 상태로 남기는 경우에 대비해 `speechSynthesis.resume()`도 부르고, 첫 조각의 `onstart`(`tts started`)와 모든 `onerror` 코드를 로그에 남긴다.
 - **진짜 원인: 마이크가 음성보다 먼저 켜지는 순서**: 위 수정 뒤에도 소리가 안 났다. 사용자가 나눠서 시험해 보니 텍스트로 `안녕`·`hello`를 먼저 보내면 소리가 나고, 그 뒤로는 웨이크워드 연속 대화와 대답 소리가 모두 정상이었다. 반대로 새로고침하고 처음부터 음성 인식으로 시작하면 소리는 처음부터 안 나고 웨이크워드도 첫 번째만 반응했다. 목소리는 사만다였다. 즉 아이폰에서는 음성 합성이 마이크나 음성 인식보다 먼저 한 번 실제로 소리를 내야 한다. 첫 탭의 음량 0 빈 발화(`" "`)는 iOS가 건너뛰어서 이 역할을 못 했다. 이제 처음 마이크·웨이크워드·박수 버튼을 누르면 그 탭 안에서 짧은 확인 음성("네." / "자비스찬이라고 불러 주세요." / "박수 두 번 치면 들을게요.", 영어 설정이면 영어)을 먼저 말하고, 끝난 뒤(최대 2.5초)에 마이크를 연다(`warmTTS`). 음성이 한 번이라도 시작되면 다시 하지 않는다. 이 순서 문제가 앞의 audioSession·AudioContext 시도 때 증상이 들쭉날쭉했던 이유로 보인다.
+- **사용자 확인 완료**: 아이폰 Safari에서 새로 연 페이지로 바로 웨이크워드를 켜도 확인 음성이 나오고, 웨이크워드 연속 대화와 대답 소리가 모두 정상이다. 한 번 두 번째 질문이 "We're in the next segment."처럼 엉뚱하게 받아 적혔는데, 사용자 발음 문제로 확인돼서 손대지 않았다.
+- **진단 로그 정리**: 원인을 찾으려고 넣은 웨이크워드 로그(시작·`listening`·`audio in`·`ended`·받아 적은 글자·모드 변화·모든 오류)와 매 대답의 `tts started`를 뺐다. 15초마다 세션을 새로 열어서 로그가 금방 밀렸기 때문이다. 정상에서 벗어날 때만 찍히는 로그(`wake-word … retrying`, `start threw`, `mic blocked`, `tts error`, `mic meter audio suspended`)와 한 번만 찍히는 `tts warmed up`은 남겼다.
+- **남은 코드 정리 거리(동작에는 영향 없음)**: `AudioContext` suspend, `speechSynthesis.resume()`, 웨이크워드 재시도 로직은 진짜 원인(`warmTTS`)을 찾기 전에 넣은 것이다. 지금 조합이 실기기에서 확인된 상태라 그대로 뒀다. 빼려면 아이폰에서 다시 확인해야 한다.
 
 ---
 
@@ -613,17 +618,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 112,587 bytes | `847ed8b59fe3955b…` |
+| `index.html` | 111,770 bytes | `9be5a7a31f893254…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
-| `README.md` | 5,085 bytes | `b38472b3eb09b40c…` |
+| `README.md` | 5,703 bytes | `e3bb98c73da22c9b…` |
 | `manifest.webmanifest` | 568 bytes | `954673f909847f9b…` |
 | `.env.example` | 291 bytes | `4dca9d87e66b0f3d…` |
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=847ed8b59fe3955b0547ff9b39afda89f7577ecb835102a9e44dc152fb00d24c -->
+<!-- FILE: index.html sha256=9be5a7a31f893254d56201ba8d967871f7427b99012c50b1bc7086f526dec1b4 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1896,7 +1901,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // stuck on "responding" forever. This fallback moves on regardless, sized
       // generously so it never cuts off genuine speech first.
       const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
-      u.onstart=()=>{ ttsWarm=true; if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
+      u.onstart=()=>{ ttsWarm=true; setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
@@ -2594,8 +2599,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // up in normal conversation on its own, so loosening to it trades a little
   // precision for a lot of recall.
   const WAKE_RE=/\bjarvis\b|자비스/i;
-  let wwLastMode="";
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0, wwLastHeard="";
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0;
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -2610,10 +2614,6 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // is often a real dictionary word that merely sounds similar, while the
       // wake word shows up a rank or two down.
       const alts=e.results[e.results.length-1];
-      // debug: show what the recognizer actually heard, once per change
-      const top=String((alts[0]&&alts[0].transcript)||"").trim();
-      if(top && top!==wwLastHeard){ wwLastHeard=top;
-        log("wake-word heard <b>\""+top.slice(-40).replace(/[<>&]/g,"")+"\"</b>"+(alts.isFinal?" · final":"")); }
       let said="";
       for(let i=0;i<alts.length;i++){ if(WAKE_RE.test(alts[i].transcript||"")){ said=alts[i].transcript; break; } }
       if(said){
@@ -2634,8 +2634,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         setTimeout(proceed,400);
       }
     };
-    wwRec.onstart=()=>{ wwEverStarted=true; log("wake-word <span class='ok'>listening</span>"); };
-    wwRec.onaudiostart=()=>{ log("wake-word <span class='ok'>audio in</span>"); };
+    wwRec.onstart=()=>{ wwEverStarted=true; };
     wwRec.onerror=err=>{
       // Only a refusal on the very first start means the mic is really blocked.
       // iOS Safari also reports not-allowed when a restart after a reply races
@@ -2644,15 +2643,13 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
         turnWakeWordOff(); return;
       }
-      log("wake-word error <b>"+String(err.error||"?").replace(/[<>&]/g,"")+"</b>");
       if(err.error!=="no-speech" && err.error!=="aborted"){
         log("wake-word <span class='rt'>"+String(err.error||"?").replace(/[<>&]/g,"")+" · retrying</span>");
         wwRetryAt=Date.now()+1500;
       }
       // the watcher below restarts it
     };
-    wwRec.onend=()=>{ wwActive=false; log("wake-word <span class='rt'>ended</span>"); };
-    log("wake-word start");
+    wwRec.onend=()=>{ wwActive=false; };
     try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }
     catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>start threw "+String(e&&e.name||e).replace(/[<>&]/g,"")+" · retrying</span>"); }
   }
@@ -2685,7 +2682,6 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // so the very next tick's startWakeWordRec() below picks it back up.
       if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
       if(shouldListen && !wwActive && Date.now()>=wwRetryAt) startWakeWordRec();
-      if(S.mode!==wwLastMode){ wwLastMode=S.mode; log("wake-word sees mode <b>"+S.mode+"</b>"+(recActive?" · rec":"")); }
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
@@ -3525,7 +3521,7 @@ module.exports = async (req, res) => {
 
 ### `README.md`
 
-<!-- FILE: README.md sha256=b38472b3eb09b40ce582b2dde03235a7cd063ed7420d868e28667136ead844cb -->
+<!-- FILE: README.md sha256=e3bb98c73da22c9bb7ced8559a1d9f3738c2b201cc41d773a127c12d5c7b268f -->
 ````markdown
 # Jarvischan (Vercel)
 
@@ -3606,6 +3602,12 @@ vercel --prod # 프로덕션에 배포
 - 음성 입력은 Groq Whisper(`api/transcribe.js`)를 거쳐서, 녹음만 되면 어느
   브라우저에서든 동작해요. 크롬의 내장 음성 인식은 대체 수단이에요.
   한국어 대답은 한국어 목소리로 읽어요 — 크롬의 "Google 한국의"가 제일 자연스러워요.
+- **아이폰·아이패드:** 페이지를 연 뒤 처음 마이크·웨이크워드·박수 버튼을 누르면
+  "네." 같은 짧은 확인 음성이 먼저 나오고 그다음에 마이크가 켜져요. iOS는 음성이
+  마이크보다 먼저 한 번 재생돼야 이후 대답 소리가 나기 때문이에요. 처음 한 번만 나와요.
+- **다른 주소로 배포할 때:** `index.html` `<head>`의 링크 미리보기 태그(`og:url`,
+  `og:image`, `canonical`)가 `https://jarvischan.vercel.app`을 가리켜요. 내 주소로
+  바꿔야 메신저에 공유했을 때 내 사이트의 카드가 떠요.
 - 에이전트 이름이나 말투는 `api/chat.js`(`SYSTEM` 프롬프트)와 `index.html`
   (`AGENTS` 배열)에서 내 방식대로 바꿀 수 있어요.
 ````

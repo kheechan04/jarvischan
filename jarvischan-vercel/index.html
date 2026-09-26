@@ -1269,7 +1269,7 @@
       // stuck on "responding" forever. This fallback moves on regardless, sized
       // generously so it never cuts off genuine speech first.
       const fallback=setTimeout(()=>{ if(!advanced){ advanced=true; speakNext(); } }, Math.max(2500,chunk.length*100));
-      u.onstart=()=>{ ttsWarm=true; if(i===1) log("tts <span class='ok'>started</span>"); setMode("speaking");
+      u.onstart=()=>{ ttsWarm=true; setMode("speaking");
         clearInterval(speakTimer);
         speakTimer=setInterval(()=>{ S.speakLevel=0.35+Math.random()*0.6; },90);
       };
@@ -1967,8 +1967,7 @@
   // up in normal conversation on its own, so loosening to it trades a little
   // precision for a lot of recall.
   const WAKE_RE=/\bjarvis\b|자비스/i;
-  let wwLastMode="";
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0, wwLastHeard="";
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0;
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -1983,10 +1982,6 @@
       // is often a real dictionary word that merely sounds similar, while the
       // wake word shows up a rank or two down.
       const alts=e.results[e.results.length-1];
-      // debug: show what the recognizer actually heard, once per change
-      const top=String((alts[0]&&alts[0].transcript)||"").trim();
-      if(top && top!==wwLastHeard){ wwLastHeard=top;
-        log("wake-word heard <b>\""+top.slice(-40).replace(/[<>&]/g,"")+"\"</b>"+(alts.isFinal?" · final":"")); }
       let said="";
       for(let i=0;i<alts.length;i++){ if(WAKE_RE.test(alts[i].transcript||"")){ said=alts[i].transcript; break; } }
       if(said){
@@ -2007,8 +2002,7 @@
         setTimeout(proceed,400);
       }
     };
-    wwRec.onstart=()=>{ wwEverStarted=true; log("wake-word <span class='ok'>listening</span>"); };
-    wwRec.onaudiostart=()=>{ log("wake-word <span class='ok'>audio in</span>"); };
+    wwRec.onstart=()=>{ wwEverStarted=true; };
     wwRec.onerror=err=>{
       // Only a refusal on the very first start means the mic is really blocked.
       // iOS Safari also reports not-allowed when a restart after a reply races
@@ -2017,15 +2011,13 @@
         log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
         turnWakeWordOff(); return;
       }
-      log("wake-word error <b>"+String(err.error||"?").replace(/[<>&]/g,"")+"</b>");
       if(err.error!=="no-speech" && err.error!=="aborted"){
         log("wake-word <span class='rt'>"+String(err.error||"?").replace(/[<>&]/g,"")+" · retrying</span>");
         wwRetryAt=Date.now()+1500;
       }
       // the watcher below restarts it
     };
-    wwRec.onend=()=>{ wwActive=false; log("wake-word <span class='rt'>ended</span>"); };
-    log("wake-word start");
+    wwRec.onend=()=>{ wwActive=false; };
     try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }
     catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>start threw "+String(e&&e.name||e).replace(/[<>&]/g,"")+" · retrying</span>"); }
   }
@@ -2058,7 +2050,6 @@
       // so the very next tick's startWakeWordRec() below picks it back up.
       if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
       if(shouldListen && !wwActive && Date.now()>=wwRetryAt) startWakeWordRec();
-      if(S.mode!==wwLastMode){ wwLastMode=S.mode; log("wake-word sees mode <b>"+S.mode+"</b>"+(recActive?" · rec":"")); }
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
