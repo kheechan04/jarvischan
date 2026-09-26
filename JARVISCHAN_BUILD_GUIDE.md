@@ -599,6 +599,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **메신저 링크 미리보기**: Open Graph·`description`·`twitter:card`·canonical 태그가 없어서 카카오톡 등에서 링크 카드 없이 글자로만 보였다. `<head>`에 넣었고 주소는 `https://jarvischan.vercel.app` 절대 경로다. 직접 배포하는 사람은 자기 도메인으로 바꿔야 한다. 카카오톡은 미리보기를 캐시하므로 배포 후 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 뜬다.
 - **링크 옆 사이트 아이콘**: 메신저와 브라우저 상당수는 `<link rel="icon">`보다 루트의 `/favicon.ico`를 먼저 찾는데 이 파일이 없어서 404였다. `icon-512.png`로 `favicon.ico`(16·32·48px)와 `icons/icon-32.png`를 만들어 넣고 `<head>`에 연결했다.
 - **폰 카카오톡에서 카드가 안 뜨던 문제**: 노트북(PC 카톡)에서는 카드가 떴지만 폰에서는 글자로만 보였다. 폰에서 카드가 잘 뜨는 shadow-mitts와 비교하면 미리보기 이미지가 512px 정사각 아이콘(`summary`)이었던 것이 달랐다. shadow-mitts와 같은 형식으로 1200×630 `og.png`를 새로 만들고(앱 아이콘 + 이름 + 한 줄 소개), `twitter:card`를 `summary_large_image`로, 제목·설명을 한국어로 바꾸고 `og:locale` `ko_KR`을 넣었다.
+- **아이폰에서 대답 후 웨이크워드가 다시 안 켜지던 문제**: 소리 수정 뒤 아이폰 Safari에서 대답은 들리지만 그다음 "자비스"에 반응하지 않았다. 추정 원인은 두 가지다. (1) 대답이 끝나면 오디오 세션을 `playback`에서 `auto`로만 돌려서, iOS가 음성 인식을 다시 시작하지 못했다. (2) 재시작이 한 번 `not-allowed`로 실패하면 기존 코드가 웨이크워드를 아예 꺼 버렸다. 이제 웨이크워드나 박수 깨우기가 켜져 있으면 대답 직후 세션을 `play-and-record`로 되돌리고, 인식기를 시작하기 직전에도 `play-and-record`로 맞춘다. `not-allowed`는 한 번도 시작된 적이 없을 때만 진짜 차단으로 보고 끄며, 그 밖의 오류는 로그를 남기고 1.5초 뒤 다시 시도한다. 실제 기기 확인은 아직 안 했다.
 
 ---
 
@@ -608,7 +609,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 108,537 bytes | `85a3966c84657f0c…` |
+| `index.html` | 109,487 bytes | `ee5975eecc07343e…` |
 | `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
@@ -618,7 +619,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=85a3966c84657f0caf399836b3318fb421d79fe0fe92a528577b684405626500 -->
+<!-- FILE: index.html sha256=ee5975eecc07343ef048421e4f80f8f8065f1153ee165b5a2cf2025a79c4df22 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1844,7 +1845,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       return out;
     },[]);
     let i=0;
-    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession("auto"); setMode("idle");
+    // An armed wake word or clap listener reopens the mic right after this, so hand
+    // the session straight back to capture mode; iOS won't restart recognition
+    // from "playback".
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession(wwOn||clapOn ? "play-and-record" : "auto"); setMode("idle");
       if(clapOn && !clapStream) startClapWake().then(ok=>{ if(!ok) log("clap-wake <span class='rt'>couldn't reopen mic</span>"); }); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
@@ -2553,7 +2557,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   // up in normal conversation on its own, so loosening to it trades a little
   // precision for a lot of recall.
   const WAKE_RE=/\bjarvis\b|자비스/i;
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0;
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0;
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -2588,18 +2592,27 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
         setTimeout(proceed,400);
       }
     };
+    wwRec.onstart=()=>{ wwEverStarted=true; };
     wwRec.onerror=err=>{
-      if(err.error==="not-allowed" || err.error==="service-not-allowed"){
+      // Only a refusal on the very first start means the mic is really blocked.
+      // iOS Safari also reports not-allowed when a restart after a reply races
+      // the audio session switching back, so once it has worked, just retry.
+      if((err.error==="not-allowed" || err.error==="service-not-allowed") && !wwEverStarted){
         log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
-        turnWakeWordOff();
+        turnWakeWordOff(); return;
       }
-      // no-speech / network / aborted: the watcher below restarts it
+      if(err.error!=="no-speech" && err.error!=="aborted"){
+        log("wake-word <span class='rt'>"+String(err.error||"?").replace(/[<>&]/g,"")+" · retrying</span>");
+        wwRetryAt=Date.now()+1500;
+      }
+      // the watcher below restarts it
     };
     wwRec.onend=()=>{ wwActive=false; };
-    try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }catch(e){ wwActive=false; }
+    try{ setAudioSession("play-and-record"); wwRec.start(); wwActive=true; wwStarted=Date.now(); }
+    catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>restart failed · retrying</span>"); }
   }
   function turnWakeWordOff(){
-    wwOn=false; clearInterval(wwWatch); stopWakeWordRec();
+    wwOn=false; wwEverStarted=false; wwRetryAt=0; clearInterval(wwWatch); stopWakeWordRec();
     wwBtn.setAttribute("aria-pressed","false");
     wwLbl.textContent='Say "Jarvischan" to wake · off';
   }
@@ -2623,7 +2636,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       // was right after arming. stopWakeWordRec() clears wwActive immediately,
       // so the very next tick's startWakeWordRec() below picks it back up.
       if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
-      if(shouldListen && !wwActive) startWakeWordRec();
+      if(shouldListen && !wwActive && Date.now()>=wwRetryAt) startWakeWordRec();
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();

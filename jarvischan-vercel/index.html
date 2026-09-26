@@ -1222,7 +1222,10 @@
       return out;
     },[]);
     let i=0;
-    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession("auto"); setMode("idle");
+    // An armed wake word or clap listener reopens the mic right after this, so hand
+    // the session straight back to capture mode; iOS won't restart recognition
+    // from "playback".
+    const done=()=>{ clearInterval(speakTimer); S.speakLevel=0; setAudioSession(wwOn||clapOn ? "play-and-record" : "auto"); setMode("idle");
       if(clapOn && !clapStream) startClapWake().then(ok=>{ if(!ok) log("clap-wake <span class='rt'>couldn't reopen mic</span>"); }); };
     const speakNext=()=>{
       if(i>=chunks.length){ done(); return; }
@@ -1931,7 +1934,7 @@
   // up in normal conversation on its own, so loosening to it trades a little
   // precision for a lot of recall.
   const WAKE_RE=/\bjarvis\b|자비스/i;
-  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0;
+  let wwOn=false, wwRec=null, wwActive=false, wwWatch=0, wwStarted=0, wwEverStarted=false, wwRetryAt=0;
 
   function stopWakeWordRec(){
     if(wwRec){ try{ wwRec.onresult=null; wwRec.onerror=null; wwRec.onend=null; wwRec.stop(); }catch(e){} }
@@ -1966,18 +1969,27 @@
         setTimeout(proceed,400);
       }
     };
+    wwRec.onstart=()=>{ wwEverStarted=true; };
     wwRec.onerror=err=>{
-      if(err.error==="not-allowed" || err.error==="service-not-allowed"){
+      // Only a refusal on the very first start means the mic is really blocked.
+      // iOS Safari also reports not-allowed when a restart after a reply races
+      // the audio session switching back, so once it has worked, just retry.
+      if((err.error==="not-allowed" || err.error==="service-not-allowed") && !wwEverStarted){
         log("wake-word <span style='color:var(--crit)'>mic blocked</span>");
-        turnWakeWordOff();
+        turnWakeWordOff(); return;
       }
-      // no-speech / network / aborted: the watcher below restarts it
+      if(err.error!=="no-speech" && err.error!=="aborted"){
+        log("wake-word <span class='rt'>"+String(err.error||"?").replace(/[<>&]/g,"")+" · retrying</span>");
+        wwRetryAt=Date.now()+1500;
+      }
+      // the watcher below restarts it
     };
     wwRec.onend=()=>{ wwActive=false; };
-    try{ wwRec.start(); wwActive=true; wwStarted=Date.now(); }catch(e){ wwActive=false; }
+    try{ setAudioSession("play-and-record"); wwRec.start(); wwActive=true; wwStarted=Date.now(); }
+    catch(e){ wwActive=false; wwRetryAt=Date.now()+1500; log("wake-word <span class='rt'>restart failed · retrying</span>"); }
   }
   function turnWakeWordOff(){
-    wwOn=false; clearInterval(wwWatch); stopWakeWordRec();
+    wwOn=false; wwEverStarted=false; wwRetryAt=0; clearInterval(wwWatch); stopWakeWordRec();
     wwBtn.setAttribute("aria-pressed","false");
     wwLbl.textContent='Say "Jarvischan" to wake · off';
   }
@@ -2001,7 +2013,7 @@
       // was right after arming. stopWakeWordRec() clears wwActive immediately,
       // so the very next tick's startWakeWordRec() below picks it back up.
       if(shouldListen && wwActive && Date.now()-wwStarted>15000) stopWakeWordRec();
-      if(shouldListen && !wwActive) startWakeWordRec();
+      if(shouldListen && !wwActive && Date.now()>=wwRetryAt) startWakeWordRec();
       if(!shouldListen && wwActive) stopWakeWordRec();
     },400);
     startWakeWordRec();
