@@ -473,7 +473,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 - 배포: `https://jarvischan.vercel.app`, Vercel 프로젝트 `khchan04/jarvischan-vercel`(Root Directory `jarvischan-vercel`). `git push`하면 자동 배포된다(§5-3b).
 - 저장소: `https://github.com/kheechan04/jarvischan`, Public, MIT 라이선스. README는 전부 한국어.
-- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 9개), PWA 설치, 메신저 링크 미리보기.
+- 기능: 음성 대화(한국어·영어), 서버 도구 7개, 박수·웨이크워드로 깨우기, 로컬 에이전트(윈도우, 명령 16개, 이 노트북에 맞춘 앱 목록과 루틴), PWA 설치, 메신저 링크 미리보기.
 - 모바일: 아이폰 Safari에서 웨이크워드 연속 대화와 대답 소리를 사용자가 확인했다(2026-09-26). 처음 마이크를 쓰기 전에 짧은 확인 음성을 먼저 낸다(`warmTTS`).
 - 포트폴리오: https://kheechan04.github.io/jarvischan/
 - 아래는 날짜순 진행 기록이다. 옛 주소나 옛 이름이 나오는 건 그때 기록이라서다.
@@ -568,20 +568,26 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 혼자 쓰는 개인 도구로 설계했고, 세 겹으로 제한한다.
 - **허용 목록만 실행**: `open_app`/`close_app`은 `apps.json`에 등록된 앱만 다루고, 나머지 명령도 정해진 안전한 동작만 한다. 임의 셸 명령 실행은 없다.
-- **일부러 안 넣은 것**: 컴퓨터 종료·재시작·절전, 파일 삭제·이동, 임의 프로세스 강제 종료, 포커스된 창에 글자 자동 입력. 음성 인식이 잘못 들었을 때 되돌리기 어렵거나 위험한 동작이라서, 넣으려면 별도 확인 절차부터 설계해야 한다.
+- **일부러 안 넣은 것**: 즉시 종료·재시작, 파일 삭제·이동, 임의 프로세스 강제 종료, 포커스된 창에 글자 자동 입력. 음성 인식이 잘못 들었을 때 되돌리기 어렵거나 위험한 동작이라서, 넣으려면 별도 확인 절차부터 설계해야 한다. 종료는 최소 1분 뒤로 **예약만** 되고(윈도우가 알림을 띄우고 `cancel_shutdown`이나 `shutdown /a`로 취소된다), 그게 확인 절차 역할을 한다.
 - **페어링 토큰**: 에이전트를 처음 실행할 때 무작위로 만들어져 `~/.jarvischan-agent/token.txt`에 저장된다. 브라우저는 이 토큰 없이는 어떤 명령도 보낼 수 없다.
 - **Origin 검사**: 배포된 Jarvischan 주소가 아닌 곳에서 오는 연결은 핸드셰이크 단계에서 거부한다. 허용 주소는 `agent.js`의 `ALLOWED_ORIGINS`(지금은 `jarvischan.vercel.app`, 옛 blush 주소, `localhost:3000`)라서, 다른 주소에 배포하면 거기에 추가해야 한다.
 
-### 지원 명령 (9개)
+### 지원 명령 (16개)
 
 | 명령 | 동작 | 비고 |
 |---|---|---|
-| `open_app` / `close_app` | `apps.json`에 등록된 앱 열기/닫기 | 닫기는 기본이 정상 종료(저장 확인 창을 존중), `force:true`일 때만 강제 종료. `explorer`는 바탕화면 셸이라 닫기가 항상 거부됨 |
+| `open_app` / `close_app` | `apps.json`에 등록된 앱 열기/닫기 | 닫기는 기본이 정상 종료(저장 확인 창을 존중), `force:true`이거나 `apps.json` 항목에 `"force": true`(카카오톡·디스코드처럼 트레이로 숨는 앱)일 때만 강제 종료. `explorer`는 바탕화면 셸이라 닫기가 항상 거부됨 |
+| `close_window` | 맨 앞의 앱 창에 `WM_CLOSE` 보내기 | Z 순서로 창을 훑어 숨김·도구 창·소유된 팝업·클로킹된 창·바탕화면·작업 표시줄과 제목에 "Jarvischan"이 든 창(페이지 자신과 에이전트 콘솔)을 건너뛴다 |
+| `run_routine` | `routines.json`의 루틴 실행 | 단계는 정해진 9개 명령만, 루틴 안에서 루틴·종료 예약 불가. 페이지 쪽 시간 제한은 30초 |
+| `set_brightness` | 노트북 화면 밝기 | WMI `WmiMonitorBrightnessMethods`. 외부 모니터는 안 됨 |
+| `display_off` | 4초 뒤 화면 끄기 | `SC_MONITORPOWER`. 이 노트북(LG 그램 16ZD95Q)은 S3 절전이 없고 모던 스탠바이(S0)라서 화면이 꺼지면 곧 절전이다. `SetSuspendState`는 최대 절전으로 빠져서 쓰지 않는다 |
+| `schedule_shutdown` / `cancel_shutdown` | `shutdown /s /t` / `shutdown /a` | 1\~1440분. 이미 예약됐으면(종료 코드 1190) 실패로 알린다 |
+| `system_status` | 배터리·CPU·메모리·C 드라이브·가동 시간 | 도구가 아니다. 페이지가 매 대화 전에 1.5초 제한으로 불러서 `agentInfo.status`로 서버에 보내고, 서버가 지시문에 한 줄로 넣는다. 배터리는 WMI가 느려서 1분마다 갱신한 값을 쓴다 |
 | `open_url` | 기본 브라우저로 URL 열기 | `http(s)://`만 허용 |
 | `open_path` | 파일/폴더 열기 | `desktop`/`downloads`/`documents`/`pictures`/`바탕화면`/`다운로드`/`문서` 같은 별칭 지원, 전체 경로도 가능 |
 | `find_files` | 바탕화면·문서·다운로드에서 파일 이름 검색 | 읽기 전용, 최대 8개·깊이 5 |
 | `lock_screen` | 화면 잠금 | |
-| `take_screenshot`(에이전트 쪽 명령 이름은 `screenshot`) | 전체 화면을 캡처해 바탕화면에 저장 | DPI 처리로 고배율 디스플레이에서도 전체 캡처(§6 표) |
+| `take_screenshot`(에이전트 쪽 명령 이름은 `screenshot`) | 전체 화면을 캡처해 클립보드에만 복사(파일 저장 안 함) | DPI 처리로 고배율 디스플레이에서도 전체 캡처(§6 표). 클립보드 때문에 PowerShell을 `-Sta`로 띄운다 |
 | `set_clipboard` | 클립보드에 글자 복사 | |
 | `adjust_volume` | 볼륨 올리기/내리기/음소거 | 실제 볼륨 키를 누른 것처럼 동작 |
 
@@ -590,6 +596,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - `start-agent.bat`: 더블클릭으로 실행한다(터미널 명령을 몰라도 된다).
 - `install-autostart.(ps1\|bat)` / `uninstall-autostart.(ps1\|bat)`: 윈도우 로그인 때 자동 실행되는 시작프로그램 바로가기를 추가/제거한다.
 - 브라우저 쪽은 연결이 끊기면 5초 뒤 자동으로 다시 시도하고, 페이지를 다시 열면 저장된 토큰으로 자동 접속한다. 한 번 페어링하면 그 뒤로는 버튼을 누를 일이 거의 없다.
+- **떠 있는 아이콘**(`floating-icon.ps1`, `icon.png`): 에이전트가 포트를 잡은 뒤(`listening` 이벤트) PowerShell로 띄우는 항상 위 원형 창이다. 에이전트와는 표준 입출력 한 줄씩으로만 통신한다. 아이콘 → 에이전트는 `click`/`launch`/`hide`, 에이전트 → 아이콘은 페이지 모드(`offline`/`idle`/`listening`/`thinking`/`speaking`)다. 클릭은 가장 마지막에 페어링한 페이지 하나에만 `{type:"event", event:"activate"}`로 보내고, 페이지는 박수 깨우기처럼 `toggleListen()`을 부른다. 페이지는 `setMode`가 바뀔 때마다 `{type:"state"}`를 보내 테두리 색을 맞춘다. 창은 `WS_EX_NOACTIVATE`라 눌러도 쓰던 앱의 포커스를 뺏지 않고, `WS_EX_TOOLWINDOW`라 Alt+Tab과 `close_window`에서 빠진다. 에이전트가 꺼지면 표준 입력이 닫히므로 아이콘도 같이 꺼진다. Windows PowerShell 5.1은 BOM 없는 .ps1을 ANSI로 읽어서 한글 메뉴 글자를 `\u` 이스케이프로 적었다.
 
 ### 다른 사람이 쓰려면
 
@@ -613,6 +620,21 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **목소리 메뉴에서 사만다 말고는 안 바뀌던 문제**: 원인이 겹쳐 있었다. (1) 메뉴가 영어 목소리만 보여서, 한국어 대답은 무엇을 골라도 항상 가장 점수가 높은 한국어 목소리로 읽었다. (2) 고른 목소리를 저장하지 않아 새로고침하면 사만다로 돌아갔다. (3) 이름으로 목소리를 찾았는데, iOS는 한 이름 아래 여러 목소리(기본·향상됨 등)를 두어서 다른 목소리가 잡힐 수 있었다. 이제 메뉴에 `한국어`·`English` 묶음을 모두 보여주고, 언어마다 따로 고른 목소리를 `localStorage`(`jarvis_voice_ko`·`jarvis_voice_en`)에 저장하며, `voiceURI`로 찾는다. 메뉴에는 다음 대답에 쓸 목소리가 표시되고, 고르면 그 목소리로 한 문장 들려준다. 로그의 `tts →`는 이제 목소리가 바뀔 때마다 찍힌다.
 - **목소리 메뉴 사용자 확인 완료, 그리고 iOS 한계**: 아이폰에서 목소리를 바꾸면 미리 듣기와 대답 목소리가 모두 바뀐다. 한국어 목소리는 유나 하나뿐이다. 설정 → 손쉬운 사용 → 읽기 및 말하기에서 한국어 목소리를 더 내려받고 Safari를 다시 열어도 목록에 나타나지 않았다. Safari가 웹 페이지에 기본 목소리만 보여주는 것으로 보이며(기기 식별 방지로 추정), 코드로 바꿀 수 없다. 서버 음성 합성으로 바꾸는 안은 한국어를 지원하는 유료 API 키가 필요하고 아이폰 재생 순서를 다시 검증해야 해서, 사용자와 상의해 유나를 그대로 쓰기로 했다.
 
+### 업데이트 (2026-10-27) — 로컬 에이전트를 이 노트북에 맞춤
+
+어차피 내 노트북에서만 쓰는 도구라서, 일반적인 예시 대신 실제로 깔린 앱과 하드웨어에 맞췄다. 허용 목록 방식(보안)은 사용자가 그대로 두기로 했다.
+
+- **앱 목록**: 시작 메뉴 바로가기의 실제 경로를 읽어 `apps.json`에 카카오톡·디스코드·노션·Zoom·Office 5종·한글 2010·PyCharm·반디캠·엣지·설정·작업 관리자를 한국어·영어 이름으로 넣었다. 경로는 가능한 곳은 `%LOCALAPPDATA%`·`%APPDATA%`, Office와 엣지는 App Paths(`start winword` 등)를 쓴다.
+- **에이전트가 자기 목록을 알린다**: 예전에는 `open_app` 도구 설명에 앱 이름이 하드코딩돼 있어서 실제 목록과 어긋났다. 이제 페어링 응답에 `apps`·`routines` 이름을 담아 보내고, 페이지가 `agentInfo`로 서버에 넘기면 서버가 지시문에 한 줄씩 넣는다. 클라이언트가 보낸 값이라 서버에서 개수·길이를 자르고 줄바꿈을 지운다(`agentInfoLines`).
+- **PC 상태 질문**: 도구 호출 결과는 음성 대답이 만들어진 뒤에야 나오므로(§9 구조 4번), 상태를 도구로 만들면 LLM이 숫자를 말할 수 없다. 그래서 페이지가 매 대화 직전에 `system_status`를 받아 함께 보낸다. CPU는 250ms 동안 `os.cpus()` 차이로, 디스크는 `fs.statfsSync`로 바로 읽고, 1초쯤 걸리는 WMI 배터리 조회만 1분 캐시를 쓴다.
+- **루틴**: `routines.json`에 작업·회의·휴식·마무리 모드를 넣었다. 모드 이름 끝의 "모드"/"mode"는 없어도 찾는다.
+- **전원·화면**: `powercfg /a`로 보니 이 노트북은 S3 절전이 없고 모던 스탠바이(S0)다. 그래서 "절전"은 화면 끄기(`display_off`)로 처리했다. 종료는 예약만 넣었다.
+- **스크린샷은 클립보드로만**: 예전에는 바탕화면에 PNG를 저장했다. 사용자가 저장 없이 바로 붙여넣기만 하길 원해서, 이제 파일을 만들지 않고 클립보드에만 넣는다.
+- **창 닫기**: 이름 없이 "이 창 닫아줘"라고 하면 맨 앞 앱 창을 닫는다. 말하는 대상인 Jarvischan 창 자체를 닫지 않도록 제목에 "Jarvischan"이 든 창은 건너뛴다.
+- **한글 창 제목이 깨지던 문제**: PowerShell이 stdout을 콘솔 코드 페이지(CP949)로 내보내서 Node에서 UTF-8로 읽으면 깨졌다. `runPowerShell`이 스크립트 맨 앞에서 `[Console]::OutputEncoding`을 UTF-8로 바꾼다.
+- **떠 있는 아이콘**: 화면 구석에 항상 위로 뜨는 Jarvischan 아이콘을 누르면 어느 앱에서든 바로 듣기 시작한다(§9 편의 기능). 검증은 사용자가 수업 중이라 소리 없이 했다. 브라우저 대신 웹소켓 클라이언트가 페이지 행세를 하고, 실제 마우스 대신 아이콘 창에 `WM_LBUTTONDOWN/UP` 메시지를 보냈다. 연결 전 흐린 상태, `listening` 빨간 테두리, 클릭 → 페이지에 `activate` 도착, 에이전트 종료 → 아이콘 종료를 확인했다. 실제 페이지에서 아이콘으로 듣기가 시작되는지(특히 창이 최소화됐을 때)는 사용자가 확인해야 한다.
+- **검증**: 테스트 포트(18765)로 에이전트를 따로 띄워 웹소켓으로 `system_status`, `set_brightness`(현재 값 그대로), `close_window`(실제로 닫지 않는 `dry_run`), 24시간 뒤 종료 예약 → 중복 예약 거부 → 취소, 잘못된 분·없는 루틴 오류를 확인했다. 실제 앱을 여닫는 루틴과 화면 끄기는 브라우저에서 사용자가 확인해야 한다.
+
 ---
 
 ## 부록 — 파일 원본
@@ -621,8 +643,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 113,224 bytes | `142cf9fc7bfaef29…` |
-| `api/chat.js` | 31,344 bytes | `2d56f0ef5e63d567…` |
+| `index.html` | 114,913 bytes | `6b806be7b19e9094…` |
+| `api/chat.js` | 36,803 bytes | `1b33093812fd2033…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
 | `README.md` | 5,823 bytes | `e40217c48616a95b…` |
@@ -631,7 +653,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=142cf9fc7bfaef29cb417136da5e65cd5f45f155763044187f2781050404bf06 -->
+<!-- FILE: index.html sha256=6b806be7b19e90944630c5e5f6ac878388d519ee8f9922197c9f64da6ce494bd -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -1130,7 +1152,9 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
   /* ---------------- state label ---------------- */
   const stateLabel=$("stateLabel"), stateHint=$("stateHint");
+  let onModeChange=null;   // set by the local agent section to mirror the mode on its floating icon
   function setMode(m, hint){
+    if(m!==S.mode && onModeChange) onModeChange(m);
     S.mode=m;
     const map={idle:"STANDBY",listening:"LISTENING",thinking:"PROCESSING",speaking:"RESPONDING"};
     if(stateLabel) stateLabel.textContent=map[m]||m.toUpperCase();
@@ -2032,9 +2056,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   let userTZ="Asia/Seoul";
   try{ userTZ=Intl.DateTimeFormat().resolvedOptions().timeZone||userTZ; }catch(e){}
   async function postChat(messages){
+    // With the local agent paired, send what this PC has (apps, routines)
+    // plus a fresh status reading so "배터리 몇 퍼센트야?" gets real numbers.
+    // Short timeout: a slow agent must not hold up the reply.
+    let agentInfo=null;
+    if(laConnected){
+      const st=await localAgentSend("system_status", {}, 1500);
+      agentInfo={apps:laInfo.apps, routines:laInfo.routines, status:st.ok?st.status:null};
+    }
     const r=await fetch("/api/chat",{
       method:"POST", headers:{"content-type":"application/json"},
-      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref, localAgent:laConnected})
+      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref, localAgent:laConnected, agentInfo})
     });
     if(r.status===401){ authed=false; const e=new Error("bad password"); e.code=401; throw e; }
     if(r.status===429){ const e=new Error("busy"); e.code=429; throw e; }
@@ -2741,20 +2773,26 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   const laBtn=$("localagent"), laLbl=laBtn.querySelector(".lalbl");
   const LA_URL="ws://localhost:8765";
   let laOn=false, laWS=null, laConnected=false, laPending=new Map(), laSeq=0, laReconnectTimer=0;
+  let laInfo={apps:[], routines:[]};   // what the agent reported on pairing
+  onModeChange=(m)=>{
+    if(laConnected && laWS){ try{ laWS.send(JSON.stringify({type:"state", mode:m})); }catch(e){} }
+  };
   let laToken=""; try{ laToken=localStorage.getItem("jarvis_agent_token")||""; }catch(e){}
 
   function setLocalAgentUI(){
     laBtn.setAttribute("aria-pressed", laConnected?"true":"false");
     laLbl.textContent = laConnected ? "Local agent · connected" : (laOn ? "Local agent · connecting…" : "Local agent · off");
   }
-  function localAgentSend(command, args){
+  function localAgentSend(command, args, timeoutMs){
     return new Promise((resolve)=>{
       if(!laConnected || !laWS){ resolve({ok:false, error:"local agent not connected"}); return; }
       const id="c"+(++laSeq);
       laPending.set(id, resolve);
       // If the agent never answers (app hung, action stalled), don't leave
       // the caller hanging forever — resolve with a timeout error instead.
-      setTimeout(()=>{ if(laPending.has(id)){ laPending.delete(id); resolve({ok:false, error:"timed out"}); } }, 8000);
+      // Routines get longer: each graceful close_app alone waits 1.5s.
+      const ms=timeoutMs || (command==="run_routine" ? 30000 : 8000);
+      setTimeout(()=>{ if(laPending.has(id)){ laPending.delete(id); resolve({ok:false, error:"timed out"}); } }, ms);
       try{ laWS.send(JSON.stringify({type:"cmd", id, command, args})); }
       catch(e){ laPending.delete(id); resolve({ok:false, error:"send failed"}); }
     });
@@ -2771,6 +2809,10 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
       if(msg.type==="auth"){
         laConnected=!!msg.ok;
+        if(laConnected){
+          laInfo={apps:msg.apps||[], routines:msg.routines||[]};
+          onModeChange(S.mode);   // so the floating icon starts out showing the right state
+        }
         log(laConnected ? "local agent <span class='ok'>paired</span>"
           : "local agent <span style='color:var(--crit)'>bad token — click again to re-enter it</span>");
         if(!laConnected){
@@ -2782,6 +2824,15 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
           laOn=false; try{ laWS.close(); }catch(e){} laWS=null;
         }
         setLocalAgentUI();
+        return;
+      }
+      // The agent's floating icon was clicked: same as tapping the mic
+      // button (a second click stops listening). Works from a background
+      // window like clap-wake does, since mic permission is already granted.
+      if(msg.type==="event" && msg.event==="activate"){
+        if(!authed){ log("floating icon <span class='rt'>ignored — enter the password first</span>"); return; }
+        log('<span class="rt">✦ floating icon</span> → '+(S.mode==="listening"?"stop":"listening"));
+        toggleListen();
         return;
       }
       if(msg.type==="result" && laPending.has(msg.id)){
@@ -2902,7 +2953,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=2d56f0ef5e63d567e961aac1422b78472c301c6bb3249a1e937ebf28221468fc -->
+<!-- FILE: api/chat.js sha256=1b33093812fd203336bcb813350ae45adddf06c46da6f4cd3e1060cb92bb10f1 -->
 ````js
 // Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
@@ -2936,7 +2987,7 @@ const SYSTEM = [
   "- general conversation, brainstorming and answering from your own knowledge",
   "- understanding and answering in Korean or English, by voice or text",
   "",
-  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (opening apps/URLs/files, searching for files) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
+  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown, battery/CPU status) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
   "Never claim you did, queued, drafted, scheduled or saved something unless a tool result confirms it. If asked for something you cannot do, say so plainly in one sentence and offer the closest thing you can do.",
   "When asked what you can do, name three or four of the real abilities above in one or two sentences — never invent others.",
   "Use tool results as the only source for live facts. If a tool returns an error, say what failed in plain words.",
@@ -2983,7 +3034,7 @@ const TOOLS = [
 // the user's own computer, they don't execute here on the server.
 const DEVICE_TOOLS = [
   fn("open_app", "Open an application on the user's computer by name.", {
-    app: { type: "string", description: "Friendly app name from the user's allow-list, e.g. chrome, notepad, calculator, explorer, vscode, spotify" }
+    app: { type: "string", description: "App name exactly as listed in the LOCAL AGENT apps line of the system prompt" }
   }, ["app"]),
   fn("close_app", "Close/quit an application on the user's computer by name. Tries a normal close first, which lets the app prompt to save unsaved changes — set force only if the user explicitly says to force/kill it, since that skips any save prompt. Refuses explorer (the Windows desktop shell) and anything not in the allow-list.", {
     app: { type: "string", description: "Friendly app name, same set as open_app" },
@@ -2999,7 +3050,21 @@ const DEVICE_TOOLS = [
     query: { type: "string", description: "Filename substring to search for" }
   }, ["query"]),
   fn("lock_screen", "Lock the user's computer screen immediately.", {}, []),
-  fn("take_screenshot", "Capture the user's screen and save it as a PNG to their Desktop.", {}, []),
+  fn("take_screenshot", "Capture the user's screen and copy the image to the clipboard (no file is saved), so they can paste it anywhere with Ctrl+V.", {}, []),
+  fn("close_window", "Close the window the user was last working in (the frontmost app window other than Jarvischan itself), like clicking its X — unsaved-changes prompts still appear. Use for 'close this window' / '창 닫아줘' when no app is named; use close_app when one is.", {}, []),
+  fn("run_routine", "Run one of the user's saved routines (modes), which opens/closes several apps and adjusts settings in one go.", {
+    name: { type: "string", description: "Routine name exactly as listed in the LOCAL AGENT routines line of the system prompt" }
+  }, ["name"]),
+  fn("set_brightness", "Change the laptop screen brightness. Give either level or direction.", {
+    level: { type: "integer", description: "Absolute brightness 0-100" },
+    direction: { type: "string", enum: ["up", "down"], description: "Relative change when no level is given" },
+    step: { type: "integer", description: "Percent to move for up/down. Default 20." }
+  }, []),
+  fn("display_off", "Turn the screen off after a few seconds. On this laptop that is also how it goes to sleep/standby, so use it for both 'turn the screen off' and 'go to sleep'.", {}, []),
+  fn("schedule_shutdown", "Shut the computer down after a delay. Windows announces it and it can be cancelled. Only when the user explicitly asks to shut down/turn off the computer.", {
+    minutes: { type: "integer", description: "Minutes from now, 1-1440. If the user says 'now', use 1." }
+  }, ["minutes"]),
+  fn("cancel_shutdown", "Cancel a scheduled shutdown.", {}, []),
   fn("set_clipboard", "Copy text to the user's clipboard so they can paste it elsewhere.", {
     text: { type: "string", description: "The text to copy" }
   }, ["text"]),
@@ -3231,7 +3296,7 @@ const IMPL = {
   },
 
   async take_screenshot() {
-    return { result: { queued: true, note: "Saved to the user's Desktop once it completes." },
+    return { result: { queued: true, note: "Goes to the clipboard only, not saved as a file — the user pastes it with Ctrl+V." },
       action: { type: "device", command: "screenshot", args: {} } };
   },
 
@@ -3247,8 +3312,70 @@ const IMPL = {
     const n = Math.max(1, Math.min(20, parseInt(steps, 10) || 5));
     return { result: { queued: true, direction: d, steps: n },
       action: { type: "device", command: "adjust_volume", args: { direction: d, steps: n } } };
+  },
+
+  async close_window() {
+    return { result: { queued: true }, action: { type: "device", command: "close_window", args: {} } };
+  },
+
+  async run_routine({ name }) {
+    const n = String(name || "").trim().slice(0, 40);
+    if (!n) return { result: { error: "no routine name given" } };
+    return { result: { queued: true, routine: n }, action: { type: "device", command: "run_routine", args: { name: n } } };
+  },
+
+  async set_brightness({ level, direction, step }) {
+    const lv = parseInt(level, 10);
+    const d = String(direction || "").toLowerCase();
+    if (isNaN(lv) && !["up", "down"].includes(d)) return { result: { error: "give a level 0-100 or direction up/down" } };
+    const args = isNaN(lv) ? { direction: d, step: Math.max(5, Math.min(100, parseInt(step, 10) || 20)) }
+      : { level: Math.max(0, Math.min(100, lv)) };
+    return { result: Object.assign({ queued: true }, args), action: { type: "device", command: "set_brightness", args } };
+  },
+
+  async display_off() {
+    return { result: { queued: true, note: "The screen goes dark in about 4 seconds; moving the mouse wakes it." },
+      action: { type: "device", command: "display_off", args: {} } };
+  },
+
+  async schedule_shutdown({ minutes }) {
+    const m = parseInt(minutes, 10);
+    if (isNaN(m) || m < 1 || m > 1440) return { result: { error: "minutes must be between 1 and 1440" } };
+    return { result: { queued: true, minutes: m, note: "It can be cancelled any time before then." },
+      action: { type: "device", command: "schedule_shutdown", args: { minutes: m } } };
+  },
+
+  async cancel_shutdown() {
+    return { result: { queued: true }, action: { type: "device", command: "cancel_shutdown", args: {} } };
   }
 };
+
+// What the browser's local agent reported about this PC: its allow-listed
+// app names, saved routines and a live status reading. All of it comes from
+// the client, so clip everything before it goes anywhere near the prompt.
+function agentInfoLines(info) {
+  if (!info || typeof info !== "object") return "";
+  const names = (a, max) => (Array.isArray(a) ? a : []).filter(s => typeof s === "string")
+    .slice(0, max).map(s => s.replace(/[\r\n,]/g, " ").slice(0, 40));
+  const lines = [];
+  const apps = names(info.apps, 80), routines = names(info.routines, 20);
+  if (apps.length) lines.push("LOCAL AGENT apps (open_app/close_app accept only these): " + apps.join(", "));
+  if (routines.length) lines.push("LOCAL AGENT routines (run_routine): " + routines.join(", "));
+  const s = info.status;
+  if (s && typeof s === "object") {
+    const num = v => (typeof v === "number" && isFinite(v) ? v : null);
+    const parts = [];
+    const b = s.battery && typeof s.battery === "object" ? s.battery : null;
+    if (b && num(b.percent) != null) parts.push("battery " + num(b.percent) + "% (" + (b.plugged_in ? "plugged in" : "on battery" +
+      (num(b.minutes_left) != null ? ", about " + num(b.minutes_left) + " min left" : "")) + ")");
+    if (num(s.cpu_percent) != null) parts.push("CPU " + num(s.cpu_percent) + "%");
+    if (num(s.memory_used_gb) != null) parts.push("memory " + num(s.memory_used_gb) + " of " + num(s.memory_total_gb) + " GB used");
+    if (num(s.disk_free_gb) != null) parts.push("C: drive " + num(s.disk_free_gb) + " GB free of " + num(s.disk_total_gb) + " GB");
+    if (num(s.uptime_hours) != null) parts.push("up " + num(s.uptime_hours) + " hours since last restart");
+    if (parts.length) lines.push("PC STATUS right now (answer battery/CPU/memory/disk questions from this, no tool needed): " + parts.join(", ") + ".");
+  }
+  return lines.length ? "\n" + lines.join("\n") : "";
+}
 
 async function runTool(name, argsJson) {
   const impl = IMPL[name];
@@ -3359,8 +3486,9 @@ module.exports = async (req, res) => {
   const langLine = body.lang === "ko" ? "\nReply in Korean." : body.lang === "en" ? "\nReply in English." : "";
   const localAgentOn = !!body.localAgent;
   const localAgentLine = "\n" + (localAgentOn
-    ? "LOCAL AGENT: connected right now. open_app/open_url/open_path/find_files really run on the user's computer."
-    : "LOCAL AGENT: not connected. Don't offer or call open_app/open_url/open_path/find_files — tell the user to connect it first if they ask for this.");
+    ? "LOCAL AGENT: connected right now. The device tools (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown) really run on the user's computer, a Windows laptop." +
+      agentInfoLines(body.agentInfo)
+    : "LOCAL AGENT: not connected. Don't offer or call any device tool (apps, files, windows, routines, volume, brightness, screen, shutdown) and you don't know the PC's battery/CPU status — tell the user to connect it first if they ask for this.");
   const system = SYSTEM + "\n" + clockLine(body.tz) + langLine + localAgentLine;
   const messages = [{ role: "system", content: system }, ...history];
   const activeTools = localAgentOn ? TOOLS.concat(DEVICE_TOOLS) : TOOLS;

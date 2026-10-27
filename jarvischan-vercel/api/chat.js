@@ -30,7 +30,7 @@ const SYSTEM = [
   "- general conversation, brainstorming and answering from your own knowledge",
   "- understanding and answering in Korean or English, by voice or text",
   "",
-  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (opening apps/URLs/files, searching for files) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
+  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown, battery/CPU status) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
   "Never claim you did, queued, drafted, scheduled or saved something unless a tool result confirms it. If asked for something you cannot do, say so plainly in one sentence and offer the closest thing you can do.",
   "When asked what you can do, name three or four of the real abilities above in one or two sentences — never invent others.",
   "Use tool results as the only source for live facts. If a tool returns an error, say what failed in plain words.",
@@ -77,7 +77,7 @@ const TOOLS = [
 // the user's own computer, they don't execute here on the server.
 const DEVICE_TOOLS = [
   fn("open_app", "Open an application on the user's computer by name.", {
-    app: { type: "string", description: "Friendly app name from the user's allow-list, e.g. chrome, notepad, calculator, explorer, vscode, spotify" }
+    app: { type: "string", description: "App name exactly as listed in the LOCAL AGENT apps line of the system prompt" }
   }, ["app"]),
   fn("close_app", "Close/quit an application on the user's computer by name. Tries a normal close first, which lets the app prompt to save unsaved changes — set force only if the user explicitly says to force/kill it, since that skips any save prompt. Refuses explorer (the Windows desktop shell) and anything not in the allow-list.", {
     app: { type: "string", description: "Friendly app name, same set as open_app" },
@@ -93,7 +93,21 @@ const DEVICE_TOOLS = [
     query: { type: "string", description: "Filename substring to search for" }
   }, ["query"]),
   fn("lock_screen", "Lock the user's computer screen immediately.", {}, []),
-  fn("take_screenshot", "Capture the user's screen and save it as a PNG to their Desktop.", {}, []),
+  fn("take_screenshot", "Capture the user's screen and copy the image to the clipboard (no file is saved), so they can paste it anywhere with Ctrl+V.", {}, []),
+  fn("close_window", "Close the window the user was last working in (the frontmost app window other than Jarvischan itself), like clicking its X — unsaved-changes prompts still appear. Use for 'close this window' / '창 닫아줘' when no app is named; use close_app when one is.", {}, []),
+  fn("run_routine", "Run one of the user's saved routines (modes), which opens/closes several apps and adjusts settings in one go.", {
+    name: { type: "string", description: "Routine name exactly as listed in the LOCAL AGENT routines line of the system prompt" }
+  }, ["name"]),
+  fn("set_brightness", "Change the laptop screen brightness. Give either level or direction.", {
+    level: { type: "integer", description: "Absolute brightness 0-100" },
+    direction: { type: "string", enum: ["up", "down"], description: "Relative change when no level is given" },
+    step: { type: "integer", description: "Percent to move for up/down. Default 20." }
+  }, []),
+  fn("display_off", "Turn the screen off after a few seconds. On this laptop that is also how it goes to sleep/standby, so use it for both 'turn the screen off' and 'go to sleep'.", {}, []),
+  fn("schedule_shutdown", "Shut the computer down after a delay. Windows announces it and it can be cancelled. Only when the user explicitly asks to shut down/turn off the computer.", {
+    minutes: { type: "integer", description: "Minutes from now, 1-1440. If the user says 'now', use 1." }
+  }, ["minutes"]),
+  fn("cancel_shutdown", "Cancel a scheduled shutdown.", {}, []),
   fn("set_clipboard", "Copy text to the user's clipboard so they can paste it elsewhere.", {
     text: { type: "string", description: "The text to copy" }
   }, ["text"]),
@@ -325,7 +339,7 @@ const IMPL = {
   },
 
   async take_screenshot() {
-    return { result: { queued: true, note: "Saved to the user's Desktop once it completes." },
+    return { result: { queued: true, note: "Goes to the clipboard only, not saved as a file — the user pastes it with Ctrl+V." },
       action: { type: "device", command: "screenshot", args: {} } };
   },
 
@@ -341,8 +355,70 @@ const IMPL = {
     const n = Math.max(1, Math.min(20, parseInt(steps, 10) || 5));
     return { result: { queued: true, direction: d, steps: n },
       action: { type: "device", command: "adjust_volume", args: { direction: d, steps: n } } };
+  },
+
+  async close_window() {
+    return { result: { queued: true }, action: { type: "device", command: "close_window", args: {} } };
+  },
+
+  async run_routine({ name }) {
+    const n = String(name || "").trim().slice(0, 40);
+    if (!n) return { result: { error: "no routine name given" } };
+    return { result: { queued: true, routine: n }, action: { type: "device", command: "run_routine", args: { name: n } } };
+  },
+
+  async set_brightness({ level, direction, step }) {
+    const lv = parseInt(level, 10);
+    const d = String(direction || "").toLowerCase();
+    if (isNaN(lv) && !["up", "down"].includes(d)) return { result: { error: "give a level 0-100 or direction up/down" } };
+    const args = isNaN(lv) ? { direction: d, step: Math.max(5, Math.min(100, parseInt(step, 10) || 20)) }
+      : { level: Math.max(0, Math.min(100, lv)) };
+    return { result: Object.assign({ queued: true }, args), action: { type: "device", command: "set_brightness", args } };
+  },
+
+  async display_off() {
+    return { result: { queued: true, note: "The screen goes dark in about 4 seconds; moving the mouse wakes it." },
+      action: { type: "device", command: "display_off", args: {} } };
+  },
+
+  async schedule_shutdown({ minutes }) {
+    const m = parseInt(minutes, 10);
+    if (isNaN(m) || m < 1 || m > 1440) return { result: { error: "minutes must be between 1 and 1440" } };
+    return { result: { queued: true, minutes: m, note: "It can be cancelled any time before then." },
+      action: { type: "device", command: "schedule_shutdown", args: { minutes: m } } };
+  },
+
+  async cancel_shutdown() {
+    return { result: { queued: true }, action: { type: "device", command: "cancel_shutdown", args: {} } };
   }
 };
+
+// What the browser's local agent reported about this PC: its allow-listed
+// app names, saved routines and a live status reading. All of it comes from
+// the client, so clip everything before it goes anywhere near the prompt.
+function agentInfoLines(info) {
+  if (!info || typeof info !== "object") return "";
+  const names = (a, max) => (Array.isArray(a) ? a : []).filter(s => typeof s === "string")
+    .slice(0, max).map(s => s.replace(/[\r\n,]/g, " ").slice(0, 40));
+  const lines = [];
+  const apps = names(info.apps, 80), routines = names(info.routines, 20);
+  if (apps.length) lines.push("LOCAL AGENT apps (open_app/close_app accept only these): " + apps.join(", "));
+  if (routines.length) lines.push("LOCAL AGENT routines (run_routine): " + routines.join(", "));
+  const s = info.status;
+  if (s && typeof s === "object") {
+    const num = v => (typeof v === "number" && isFinite(v) ? v : null);
+    const parts = [];
+    const b = s.battery && typeof s.battery === "object" ? s.battery : null;
+    if (b && num(b.percent) != null) parts.push("battery " + num(b.percent) + "% (" + (b.plugged_in ? "plugged in" : "on battery" +
+      (num(b.minutes_left) != null ? ", about " + num(b.minutes_left) + " min left" : "")) + ")");
+    if (num(s.cpu_percent) != null) parts.push("CPU " + num(s.cpu_percent) + "%");
+    if (num(s.memory_used_gb) != null) parts.push("memory " + num(s.memory_used_gb) + " of " + num(s.memory_total_gb) + " GB used");
+    if (num(s.disk_free_gb) != null) parts.push("C: drive " + num(s.disk_free_gb) + " GB free of " + num(s.disk_total_gb) + " GB");
+    if (num(s.uptime_hours) != null) parts.push("up " + num(s.uptime_hours) + " hours since last restart");
+    if (parts.length) lines.push("PC STATUS right now (answer battery/CPU/memory/disk questions from this, no tool needed): " + parts.join(", ") + ".");
+  }
+  return lines.length ? "\n" + lines.join("\n") : "";
+}
 
 async function runTool(name, argsJson) {
   const impl = IMPL[name];
@@ -453,8 +529,9 @@ module.exports = async (req, res) => {
   const langLine = body.lang === "ko" ? "\nReply in Korean." : body.lang === "en" ? "\nReply in English." : "";
   const localAgentOn = !!body.localAgent;
   const localAgentLine = "\n" + (localAgentOn
-    ? "LOCAL AGENT: connected right now. open_app/open_url/open_path/find_files really run on the user's computer."
-    : "LOCAL AGENT: not connected. Don't offer or call open_app/open_url/open_path/find_files — tell the user to connect it first if they ask for this.");
+    ? "LOCAL AGENT: connected right now. The device tools (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown) really run on the user's computer, a Windows laptop." +
+      agentInfoLines(body.agentInfo)
+    : "LOCAL AGENT: not connected. Don't offer or call any device tool (apps, files, windows, routines, volume, brightness, screen, shutdown) and you don't know the PC's battery/CPU status — tell the user to connect it first if they ask for this.");
   const system = SYSTEM + "\n" + clockLine(body.tz) + langLine + localAgentLine;
   const messages = [{ role: "system", content: system }, ...history];
   const activeTools = localAgentOn ? TOOLS.concat(DEVICE_TOOLS) : TOOLS;

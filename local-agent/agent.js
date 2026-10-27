@@ -7,12 +7,16 @@
 // and relays the assistant's tool calls here.
 //
 // Deliberately allow-list only: no arbitrary shell command execution, no
-// file delete/move, no shutdown/restart, no simulated keyboard typing.
-// open_app/close_app only work on apps listed in apps.json.
+// file delete/move, no immediate shutdown/restart, no simulated keyboard
+// typing. open_app/close_app only work on apps listed in apps.json, and
+// run_routine only chains the commands below, as written in routines.json.
+// The one power action is a *scheduled* shutdown at least a minute out,
+// which Windows announces and cancel_shutdown (or `shutdown /a`) undoes.
 "use strict";
 
 const { WebSocketServer } = require("ws");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
+const readline = require("readline");
 const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
@@ -30,6 +34,7 @@ const ALLOWED_ORIGINS = new Set([
 const CONFIG_DIR = path.join(os.homedir(), ".jarvischan-agent");
 const TOKEN_FILE = path.join(CONFIG_DIR, "token.txt");
 const APPS_FILE = path.join(__dirname, "apps.json");
+const ROUTINES_FILE = path.join(__dirname, "routines.json");
 
 function ensureToken() {
   if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -45,6 +50,10 @@ const TOKEN = ensureToken();
 function loadApps() {
   try { return JSON.parse(fs.readFileSync(APPS_FILE, "utf8")); }
   catch (e) { console.error("apps.json unreadable:", e.message); return {}; }
+}
+function loadRoutines() {
+  try { return JSON.parse(fs.readFileSync(ROUTINES_FILE, "utf8")); }
+  catch (e) { if (e.code !== "ENOENT") console.error("routines.json unreadable:", e.message); return {}; }
 }
 
 function isSafeUrl(u) {
@@ -103,7 +112,11 @@ async function closeApp(name, force) {
   if (!proc) return { ok: false, error: "no process name configured for " + name + " (edit apps.json to add one)" };
   if (!(await isProcessRunning(proc))) return { ok: true, message: name + " wasn't running" };
 
-  if (force) {
+  // Tray apps (KakaoTalk, Discord) treat a normal close as "hide to the
+  // tray" and keep running, so the graceful path below could never succeed
+  // for them. "force": true in apps.json marks those — they have no
+  // unsaved-document prompt to lose anyway.
+  if (force || entry.force) {
     await taskkill(proc, true);
     return (await isProcessRunning(proc))
       ? { ok: false, error: "failed to force-close " + name }
@@ -180,8 +193,14 @@ function runPowerShell(script) {
     // which matters here since screenshot/clipboard scripts contain quotes
     // and $ signs that would otherwise need fragile escaping through both
     // cmd.exe and PowerShell.
+    // UTF-8 output: otherwise PowerShell writes stdout in the console's
+    // code page (CP949 on a Korean Windows) and Korean window titles arrive
+    // here garbled.
+    script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" + script;
     const encoded = Buffer.from(script, "utf16le").toString("base64");
-    exec('powershell -NoProfile -NonInteractive -EncodedCommand ' + encoded,
+    // -Sta: the Windows Forms clipboard (screenshot) refuses to work from
+    // a multi-threaded apartment.
+    exec('powershell -NoProfile -NonInteractive -Sta -EncodedCommand ' + encoded,
       { timeout: 10000 }, (err, stdout, stderr) => {
         if (err) resolve({ ok: false, error: String(stderr || err.message || err).slice(0, 200) });
         else resolve({ ok: true, stdout: String(stdout || "").trim() });
@@ -197,10 +216,9 @@ async function lockScreen() {
   });
 }
 
+// Clipboard only, no file: the point is pasting it straight into KakaoTalk,
+// Discord or Notion with Ctrl+V, not collecting PNGs on the Desktop.
 async function screenshot() {
-  const dir = path.join(os.homedir(), "Desktop");
-  const file = "jarvischan-screenshot-" + new Date().toISOString().replace(/[:.]/g, "-") + ".png";
-  const out = path.join(dir, file);
   const script = [
     "Add-Type -AssemblyName System.Windows.Forms,System.Drawing",
     // PowerShell isn't marked DPI-aware by default, so without this,
@@ -216,11 +234,11 @@ async function screenshot() {
     "$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height",
     "$g = [System.Drawing.Graphics]::FromImage($bmp)",
     "$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)",
-    '$bmp.Save("' + out.replace(/"/g, "") + '")'
+    "[System.Windows.Forms.Clipboard]::SetImage($bmp)"
   ].join("\n");
   const r = await runPowerShell(script);
   if (!r.ok) return { ok: false, error: r.error || "screenshot failed" };
-  return { ok: true, message: "saved screenshot to Desktop", path: out };
+  return { ok: true, message: "screenshot copied to clipboard" };
 }
 
 async function setClipboard(text) {
@@ -261,6 +279,190 @@ async function adjustVolume(direction, steps) {
   return { ok: true, message: dir === "mute" ? "toggled mute" : "volume " + dir + " x" + n };
 }
 
+// Battery goes through WMI, which takes about a second per PowerShell call —
+// too slow to run before every chat turn. Keep a reading that refreshes once
+// a minute instead; battery level doesn't move faster than that anyway.
+let batteryCache = null;
+async function refreshBattery() {
+  const r = await runPowerShell(
+    "$b = Get-CimInstance Win32_Battery | Select-Object -First 1\n" +
+    "if ($b) { '' + $b.EstimatedChargeRemaining + ',' + $b.BatteryStatus + ',' + $b.EstimatedRunTime }");
+  if (!r.ok || !r.stdout) return;
+  const [pct, status, runtime] = r.stdout.split(",").map(Number);
+  // BatteryStatus 1 = running on battery; everything else means plugged in.
+  // EstimatedRunTime is a nonsense sentinel (71582788) while plugged in.
+  const onBattery = status === 1;
+  batteryCache = { percent: pct, plugged_in: !onBattery,
+    minutes_left: onBattery && runtime > 0 && runtime < 100000 ? runtime : null };
+}
+refreshBattery();
+setInterval(refreshBattery, 60000).unref();
+
+function cpuTimes() {
+  return os.cpus().reduce((a, c) => {
+    const t = c.times;
+    a.idle += t.idle; a.total += t.user + t.nice + t.sys + t.idle + t.irq;
+    return a;
+  }, { idle: 0, total: 0 });
+}
+const gb = (bytes) => Math.round(bytes / 1073741824 * 10) / 10;
+
+// The page asks for this right before each chat turn so the assistant can
+// answer "배터리 몇 퍼센트야?" from real numbers — keep it fast (~250ms).
+async function systemStatus() {
+  const a = cpuTimes();
+  await sleep(250);
+  const b = cpuTimes();
+  const total = b.total - a.total;
+  const status = {
+    cpu_percent: total > 0 ? Math.round(100 * (1 - (b.idle - a.idle) / total)) : null,
+    memory_used_gb: gb(os.totalmem() - os.freemem()),
+    memory_total_gb: gb(os.totalmem()),
+    uptime_hours: Math.round(os.uptime() / 360) / 10
+  };
+  try {
+    const s = fs.statfsSync(process.env.SystemDrive ? process.env.SystemDrive + "\\" : "C:\\");
+    status.disk_free_gb = gb(s.bavail * s.bsize);
+    status.disk_total_gb = gb(s.blocks * s.bsize);
+  } catch (e) {}
+  if (batteryCache) status.battery = batteryCache;
+  return { ok: true, status };
+}
+
+// Laptop panel brightness through WMI. Only works on built-in displays —
+// external monitors don't expose this class, so a desktop setup gets an error.
+async function setBrightness(level, direction, step) {
+  let target = parseInt(level, 10);
+  if (isNaN(target)) {
+    const dir = String(direction || "").toLowerCase();
+    if (dir !== "up" && dir !== "down") return { ok: false, error: "give a level 0-100 or direction up/down" };
+    const cur = await runPowerShell("(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness | Select-Object -First 1).CurrentBrightness");
+    const now = parseInt(cur.stdout, 10);
+    if (!cur.ok || isNaN(now)) return { ok: false, error: "couldn't read brightness (built-in display only)" };
+    const d = Math.max(5, Math.min(100, parseInt(step, 10) || 20));
+    target = now + (dir === "up" ? d : -d);
+  }
+  target = Math.max(0, Math.min(100, target));
+  const r = await runPowerShell(
+    "Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods | " +
+    "Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{ Timeout = [uint32]0; Brightness = [byte]" + target + " } | Out-Null");
+  if (!r.ok) return { ok: false, error: "couldn't set brightness (built-in display only)" };
+  return { ok: true, message: "brightness " + target + "%" };
+}
+
+// SC_MONITORPOWER 2 = display off. This laptop uses Modern Standby (S0 low
+// power idle) rather than classic S3 sleep, so a dark screen is also how it
+// drops into standby — SetSuspendState would hibernate instead. Delayed a
+// few seconds so the spoken reply and the user's hand leaving the mouse
+// don't wake it straight back up.
+async function displayOff() {
+  setTimeout(() => {
+    runPowerShell([
+      "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class JarvischanMon { [DllImport(\"user32.dll\")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); }'",
+      "[JarvischanMon]::PostMessage([IntPtr]0xFFFF, 0x0112, [IntPtr]0xF170, [IntPtr]2) | Out-Null"
+    ].join("\n"));
+  }, 4000);
+  return { ok: true, message: "turning the display off in 4 seconds" };
+}
+
+function runShutdown(argStr) {
+  return new Promise((resolve) => {
+    exec("shutdown " + argStr, (err, stdout, stderr) => resolve({ err, out: String(stderr || stdout || "") }));
+  });
+}
+async function scheduleShutdown(minutes) {
+  const m = parseInt(minutes, 10);
+  if (isNaN(m) || m < 1 || m > 1440) return { ok: false, error: "minutes must be between 1 and 1440" };
+  const r = await runShutdown("/s /t " + m * 60);
+  if (r.err) {
+    // 1190 = "a system shutdown has already been scheduled"
+    return { ok: false, error: /1190/.test(r.out) || r.err.code === 1190
+      ? "a shutdown is already scheduled — cancel it first" : "failed to schedule shutdown" };
+  }
+  const at = new Date(Date.now() + m * 60000).toTimeString().slice(0, 5);
+  return { ok: true, message: "shutdown scheduled in " + m + " min (" + at + ")" };
+}
+async function cancelShutdown() {
+  const r = await runShutdown("/a");
+  // 1116 = "unable to abort because no shutdown was in progress"
+  if (r.err) return r.err.code === 1116 || /1116/.test(r.out)
+    ? { ok: true, message: "no shutdown was scheduled" } : { ok: false, error: "failed to cancel shutdown" };
+  return { ok: true, message: "scheduled shutdown cancelled" };
+}
+
+// Closes the window the user was last working in: walks top-level windows
+// front to back and sends WM_CLOSE to the first real app window — the same
+// as clicking its X, so unsaved-changes prompts still appear. Skips any
+// window titled Jarvischan (the page's own tab/PWA window and this agent's
+// console), since the user is usually talking to that one when asking.
+const CLOSE_WINDOW_CS = `
+using System; using System.Text; using System.Runtime.InteropServices;
+public class JarvischanWin {
+  [DllImport("user32.dll")] static extern IntPtr GetTopWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
+  public static string CloseTop(bool dryRun) {
+    for (IntPtr h = GetTopWindow(IntPtr.Zero); h != IntPtr.Zero; h = GetWindow(h, 2)) {
+      if (!IsWindowVisible(h)) continue;
+      if ((GetWindowLong(h, -20) & 0x80) != 0) continue;   // WS_EX_TOOLWINDOW
+      if (GetWindow(h, 4) != IntPtr.Zero) continue;         // owned popups/dialogs
+      int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) continue;
+      var t = new StringBuilder(512); GetWindowText(h, t, 512);
+      string title = t.ToString();
+      if (title.Length == 0 || title.IndexOf("Jarvischan", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+      var c = new StringBuilder(256); GetClassName(h, c, 256);
+      string cls = c.ToString();
+      if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd") continue;
+      if (!dryRun) PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero);   // WM_CLOSE
+      return title;
+    }
+    return "";
+  }
+}`;
+async function closeWindow(dryRun) {
+  const r = await runPowerShell(
+    "Add-Type -TypeDefinition @'\n" + CLOSE_WINDOW_CS + "\n'@\n" +
+    "[JarvischanWin]::CloseTop($" + (dryRun ? "true" : "false") + ")");
+  if (!r.ok) return { ok: false, error: r.error || "failed to close window" };
+  if (!r.stdout) return { ok: false, error: "no app window to close" };
+  return { ok: true, message: (dryRun ? "would close: " : "closed window: ") + r.stdout.slice(0, 80) };
+}
+
+// What a routine step may run — everything except the read-only/reporting
+// commands and run_routine itself (no routines calling routines).
+const ROUTINE_STEP_COMMANDS = new Set(["open_app", "close_app", "open_url", "open_path",
+  "set_clipboard", "adjust_volume", "set_brightness", "display_off", "lock_screen"]);
+
+function findRoutine(name) {
+  const routines = loadRoutines();
+  const want = String(name || "").toLowerCase().trim();
+  const bare = (s) => s.toLowerCase().replace(/\s*(모드|mode)$/, "").trim();
+  for (const [key, r] of Object.entries(routines)) {
+    const names = [key].concat((r && r.aliases) || []);
+    if (names.some((n) => n.toLowerCase() === want || bare(n) === bare(want))) return { key, routine: r };
+  }
+  return null;
+}
+async function runRoutine(name) {
+  const found = findRoutine(name);
+  if (!found) return { ok: false, error: "no routine called " + name + " (edit routines.json to add it)" };
+  const steps = Array.isArray(found.routine.steps) ? found.routine.steps : [];
+  const done = [], failed = [];
+  for (const s of steps) {
+    if (!s || !ROUTINE_STEP_COMMANDS.has(s.command)) { failed.push(String(s && s.command) + " (not allowed in routines)"); continue; }
+    const r = await runCommand(s.command, s.args);
+    const label = s.command + (s.args && s.args.app ? " " + s.args.app : "");
+    (r.ok ? done : failed).push(r.ok ? label : label + ": " + r.error);
+  }
+  return { ok: failed.length === 0, message: found.key + " — " + done.length + "/" + steps.length + " done",
+    error: failed.length ? found.key + " — failed: " + failed.join("; ") : undefined, done, failed };
+}
+
 async function runCommand(command, args) {
   args = args || {};
   try {
@@ -274,6 +476,13 @@ async function runCommand(command, args) {
       case "screenshot": return await screenshot();
       case "set_clipboard": return await setClipboard(args.text);
       case "adjust_volume": return await adjustVolume(args.direction, args.steps);
+      case "system_status": return await systemStatus();
+      case "set_brightness": return await setBrightness(args.level, args.direction, args.step);
+      case "display_off": return await displayOff();
+      case "schedule_shutdown": return await scheduleShutdown(args.minutes);
+      case "cancel_shutdown": return await cancelShutdown();
+      case "close_window": return await closeWindow(!!args.dry_run);
+      case "run_routine": return await runRoutine(args.name);
       default: return { ok: false, error: "unknown command: " + command };
     }
   } catch (e) {
@@ -286,8 +495,67 @@ console.log("Pairing token (paste into the Jarvischan page once):");
 console.log("  " + TOKEN);
 console.log("Listening on ws://localhost:" + PORT);
 console.log("Allow-listed apps: " + Object.keys(loadApps()).join(", "));
+console.log("Routines: " + (Object.keys(loadRoutines()).join(", ") || "(none)"));
+
+// ---- floating icon ----
+// An always-on-top round button (floating-icon.ps1) that wakes Jarvischan
+// from any app: a click is relayed to the paired page, which starts
+// listening exactly as if its mic button had been pressed. The page reports
+// its mode back so the icon's ring shows listening/thinking/speaking.
+// JARVIS_NO_ICON=1 turns it off.
+const ICON_SCRIPT = path.join(__dirname, "floating-icon.ps1");
+const ICON_IMAGE = path.join(__dirname, "icon.png");
+const ICON_POS_FILE = path.join(CONFIG_DIR, "icon-position.txt");
+let iconProc = null;
+// Paired pages, oldest first. Icon clicks go to the newest one only, so a
+// second open tab doesn't start a second recording at the same time.
+const pairedPages = [];
+
+function iconState(mode) {
+  if (iconProc && iconProc.stdin.writable) iconProc.stdin.write(mode + "\n");
+}
+
+// The installed Chrome app if there is one (its Start Menu folder is
+// localized — "Chrome 앱" here — so match any Chrome* folder), else the site.
+function launchJarvischan() {
+  const programs = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs");
+  let lnk = null;
+  try {
+    for (const d of fs.readdirSync(programs)) {
+      const p = path.join(programs, d, "Jarvischan.lnk");
+      if (/^chrome/i.test(d) && fs.existsSync(p)) { lnk = p; break; }
+    }
+  } catch (e) {}
+  return shellOpen(lnk || "https://jarvischan.vercel.app");
+}
+
+function handleIconEvent(ev) {
+  if (ev === "click") {
+    const page = pairedPages[pairedPages.length - 1];
+    if (page) { console.log("floating icon: listen"); page.send(JSON.stringify({ type: "event", event: "activate" })); }
+    // Nothing paired yet — open Jarvischan so there's something to talk to.
+    else { console.log("floating icon: no page connected, opening Jarvischan"); launchJarvischan(); }
+  } else if (ev === "launch") {
+    launchJarvischan();
+  } else if (ev === "hide") {
+    console.log("floating icon hidden — restart the agent to bring it back");
+  }
+}
+
+function startFloatingIcon() {
+  if (process.env.JARVIS_NO_ICON === "1" || !fs.existsSync(ICON_SCRIPT) || !fs.existsSync(ICON_IMAGE)) return;
+  iconProc = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Sta", "-ExecutionPolicy", "Bypass",
+    "-File", ICON_SCRIPT, ICON_IMAGE, ICON_POS_FILE], { windowsHide: true });
+  iconProc.stdin.on("error", () => {});   // icon already gone; nothing to tell it
+  readline.createInterface({ input: iconProc.stdout }).on("line", (l) => handleIconEvent(l.trim()));
+  iconProc.stderr.on("data", (d) => console.error("floating icon:", String(d).trim().slice(0, 300)));
+  iconProc.on("exit", () => { iconProc = null; });
+}
 
 const wss = new WebSocketServer({ port: PORT });
+// Only once the port is ours — a second agent started by mistake exits on
+// EADDRINUSE and shouldn't leave a second icon behind.
+wss.on("listening", startFloatingIcon);
 
 wss.on("connection", (ws, req) => {
   const origin = (req.headers && req.headers.origin) || "";
@@ -304,17 +572,39 @@ wss.on("connection", (ws, req) => {
 
     if (msg.type === "auth") {
       authed = msg.token === TOKEN;
-      ws.send(JSON.stringify({ type: "auth", ok: authed }));
-      if (authed) console.log("paired with " + origin);
+      // Tell the page what this PC actually has, so the assistant can name
+      // real apps and routines instead of guessing from a hardcoded list.
+      ws.send(JSON.stringify(authed
+        ? { type: "auth", ok: true, apps: Object.keys(loadApps()), routines: Object.keys(loadRoutines()) }
+        : { type: "auth", ok: false }));
+      if (authed) {
+        console.log("paired with " + origin);
+        if (!pairedPages.includes(ws)) pairedPages.push(ws);
+        iconState("idle");
+      }
       return;
     }
     if (!authed) { ws.send(JSON.stringify({ type: "error", error: "not authenticated" })); return; }
+
+    // The page's listening/thinking/speaking mode, mirrored on the icon —
+    // only from the page that icon clicks currently go to.
+    if (msg.type === "state") {
+      if (ws === pairedPages[pairedPages.length - 1]) iconState(String(msg.mode || "idle").replace(/\W/g, ""));
+      return;
+    }
 
     if (msg.type === "cmd") {
       console.log("cmd:", msg.command, JSON.stringify(msg.args || {}));
       const result = await runCommand(msg.command, msg.args);
       ws.send(JSON.stringify(Object.assign({ type: "result", id: msg.id }, result)));
     }
+  });
+
+  ws.on("close", () => {
+    const i = pairedPages.indexOf(ws);
+    if (i < 0) return;
+    pairedPages.splice(i, 1);
+    iconState(pairedPages.length ? "idle" : "offline");
   });
 });
 

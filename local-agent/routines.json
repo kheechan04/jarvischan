@@ -1,0 +1,36 @@
+{
+  "작업 모드": {
+    "aliases": ["work mode", "작업", "코딩 모드"],
+    "steps": [
+      { "command": "open_app", "args": { "app": "vscode" } },
+      { "command": "open_app", "args": { "app": "notion" } },
+      { "command": "open_app", "args": { "app": "chrome" } },
+      { "command": "set_brightness", "args": { "level": 70 } }
+    ]
+  },
+  "회의 모드": {
+    "aliases": ["meeting mode", "회의", "미팅 모드"],
+    "steps": [
+      { "command": "close_app", "args": { "app": "spotify" } },
+      { "command": "close_app", "args": { "app": "discord" } },
+      { "command": "open_app", "args": { "app": "zoom" } }
+    ]
+  },
+  "휴식 모드": {
+    "aliases": ["break mode", "휴식", "쉬는 시간"],
+    "steps": [
+      { "command": "open_app", "args": { "app": "spotify" } },
+      { "command": "set_brightness", "args": { "level": 40 } }
+    ]
+  },
+  "마무리 모드": {
+    "aliases": ["wrap up", "wrap-up mode", "퇴근 모드", "마무리"],
+    "steps": [
+      { "command": "close_app", "args": { "app": "vscode" } },
+      { "command": "close_app", "args": { "app": "pycharm" } },
+      { "command": "close_app", "args": { "app": "zoom" } },
+      { "command": "close_app", "args": { "app": "notion" } },
+      { "command": "set_brightness", "args": { "level": 30 } }
+    ]
+  }
+}

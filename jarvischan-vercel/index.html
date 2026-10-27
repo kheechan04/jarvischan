@@ -495,7 +495,9 @@
 
   /* ---------------- state label ---------------- */
   const stateLabel=$("stateLabel"), stateHint=$("stateHint");
+  let onModeChange=null;   // set by the local agent section to mirror the mode on its floating icon
   function setMode(m, hint){
+    if(m!==S.mode && onModeChange) onModeChange(m);
     S.mode=m;
     const map={idle:"STANDBY",listening:"LISTENING",thinking:"PROCESSING",speaking:"RESPONDING"};
     if(stateLabel) stateLabel.textContent=map[m]||m.toUpperCase();
@@ -1397,9 +1399,17 @@
   let userTZ="Asia/Seoul";
   try{ userTZ=Intl.DateTimeFormat().resolvedOptions().timeZone||userTZ; }catch(e){}
   async function postChat(messages){
+    // With the local agent paired, send what this PC has (apps, routines)
+    // plus a fresh status reading so "배터리 몇 퍼센트야?" gets real numbers.
+    // Short timeout: a slow agent must not hold up the reply.
+    let agentInfo=null;
+    if(laConnected){
+      const st=await localAgentSend("system_status", {}, 1500);
+      agentInfo={apps:laInfo.apps, routines:laInfo.routines, status:st.ok?st.status:null};
+    }
     const r=await fetch("/api/chat",{
       method:"POST", headers:{"content-type":"application/json"},
-      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref, localAgent:laConnected})
+      body:JSON.stringify({password:authPass, messages:messages, tz:userTZ, lang:langPref, localAgent:laConnected, agentInfo})
     });
     if(r.status===401){ authed=false; const e=new Error("bad password"); e.code=401; throw e; }
     if(r.status===429){ const e=new Error("busy"); e.code=429; throw e; }
@@ -2106,20 +2116,26 @@
   const laBtn=$("localagent"), laLbl=laBtn.querySelector(".lalbl");
   const LA_URL="ws://localhost:8765";
   let laOn=false, laWS=null, laConnected=false, laPending=new Map(), laSeq=0, laReconnectTimer=0;
+  let laInfo={apps:[], routines:[]};   // what the agent reported on pairing
+  onModeChange=(m)=>{
+    if(laConnected && laWS){ try{ laWS.send(JSON.stringify({type:"state", mode:m})); }catch(e){} }
+  };
   let laToken=""; try{ laToken=localStorage.getItem("jarvis_agent_token")||""; }catch(e){}
 
   function setLocalAgentUI(){
     laBtn.setAttribute("aria-pressed", laConnected?"true":"false");
     laLbl.textContent = laConnected ? "Local agent · connected" : (laOn ? "Local agent · connecting…" : "Local agent · off");
   }
-  function localAgentSend(command, args){
+  function localAgentSend(command, args, timeoutMs){
     return new Promise((resolve)=>{
       if(!laConnected || !laWS){ resolve({ok:false, error:"local agent not connected"}); return; }
       const id="c"+(++laSeq);
       laPending.set(id, resolve);
       // If the agent never answers (app hung, action stalled), don't leave
       // the caller hanging forever — resolve with a timeout error instead.
-      setTimeout(()=>{ if(laPending.has(id)){ laPending.delete(id); resolve({ok:false, error:"timed out"}); } }, 8000);
+      // Routines get longer: each graceful close_app alone waits 1.5s.
+      const ms=timeoutMs || (command==="run_routine" ? 30000 : 8000);
+      setTimeout(()=>{ if(laPending.has(id)){ laPending.delete(id); resolve({ok:false, error:"timed out"}); } }, ms);
       try{ laWS.send(JSON.stringify({type:"cmd", id, command, args})); }
       catch(e){ laPending.delete(id); resolve({ok:false, error:"send failed"}); }
     });
@@ -2136,6 +2152,10 @@
       let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
       if(msg.type==="auth"){
         laConnected=!!msg.ok;
+        if(laConnected){
+          laInfo={apps:msg.apps||[], routines:msg.routines||[]};
+          onModeChange(S.mode);   // so the floating icon starts out showing the right state
+        }
         log(laConnected ? "local agent <span class='ok'>paired</span>"
           : "local agent <span style='color:var(--crit)'>bad token — click again to re-enter it</span>");
         if(!laConnected){
@@ -2147,6 +2167,15 @@
           laOn=false; try{ laWS.close(); }catch(e){} laWS=null;
         }
         setLocalAgentUI();
+        return;
+      }
+      // The agent's floating icon was clicked: same as tapping the mic
+      // button (a second click stops listening). Works from a background
+      // window like clap-wake does, since mic permission is already granted.
+      if(msg.type==="event" && msg.event==="activate"){
+        if(!authed){ log("floating icon <span class='rt'>ignored — enter the password first</span>"); return; }
+        log('<span class="rt">✦ floating icon</span> → '+(S.mode==="listening"?"stop":"listening"));
+        toggleListen();
         return;
       }
       if(msg.type==="result" && laPending.has(msg.id)){
