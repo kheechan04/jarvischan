@@ -30,7 +30,7 @@ const SYSTEM = [
   "- general conversation, brainstorming and answering from your own knowledge",
   "- understanding and answering in Korean or English, by voice or text",
   "",
-  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown, battery/CPU status) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
+  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown, battery/CPU status) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first. Even then you can't click, type or press anything inside an app or web page (pick a video on YouTube's home screen, send a KakaoTalk message, press play in Spotify): you can only open/close apps and windows, open URLs, files and folders, and use the device tools. To play something on YouTube, use play_youtube with a search term.",
   "Never claim you did, queued, drafted, scheduled or saved something unless a tool result confirms it. If asked for something you cannot do, say so plainly in one sentence and offer the closest thing you can do.",
   "When asked what you can do, name three or four of the real abilities above in one or two sentences — never invent others.",
   "Use tool results as the only source for live facts. If a tool returns an error, say what failed in plain words.",
@@ -86,9 +86,12 @@ const DEVICE_TOOLS = [
   fn("open_url", "Open a URL in the default browser on the user's computer.", {
     url: { type: "string", description: "Full URL starting with http:// or https://" }
   }, ["url"]),
-  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer). Accepts a friendly folder name (desktop, downloads, documents, pictures) or an absolute path.", {
-    path: { type: "string", description: "e.g. downloads, desktop, or an absolute path like C:\\Users\\me\\Documents\\report.docx" }
+  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer). Accepts a standard folder (desktop, downloads, documents, pictures, videos, music), an absolute path, or just a folder/file name — the agent then searches Desktop, Documents, Downloads and the home folder for it.", {
+    path: { type: "string", description: "e.g. downloads, or the name the user said like jarvischan or 과제, or an absolute path like C:\\Users\\me\\Documents\\report.docx. Never invent a full path you don't know — pass the bare name instead." }
   }, ["path"]),
+  fn("play_youtube", "Search YouTube and open the top video, playing, in the user's browser. Use for requests like '유튜브에서 X 틀어줘' / 'play X on YouTube'. The YouTube home feed is personal and can't be read, so 'play the first video' needs a search term — if none was given, ask what to play.", {
+    query: { type: "string", description: "What to search for, in the user's own language" }
+  }, ["query"]),
   fn("find_files", "Search the user's Desktop, Documents and Downloads folders for files whose name contains a query.", {
     query: { type: "string", description: "Filename substring to search for" }
   }, ["query"]),
@@ -355,6 +358,29 @@ const IMPL = {
     const n = Math.max(1, Math.min(20, parseInt(steps, 10) || 5));
     return { result: { queued: true, direction: d, steps: n },
       action: { type: "device", command: "adjust_volume", args: { direction: d, steps: n } } };
+  },
+
+  // Runs here (no API key: it reads the public search page), then hands the
+  // watch URL to the local agent to open — the video plays on the user's PC.
+  async play_youtube({ query }) {
+    const q = String(query || "").trim().slice(0, 100);
+    if (!q) return { result: { error: "no search term given — ask the user what to play" } };
+    const r = await fetch("https://www.youtube.com/results?search_query=" + encodeURIComponent(q) + "&hl=ko&gl=KR", {
+      headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+        "accept-language": "ko-KR,ko;q=0.9,en;q=0.8" },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) return { result: { error: "YouTube search failed (" + r.status + ")" } };
+    const html = await r.text();
+    // "videoRenderer" entries are the organic results; ads use other renderers.
+    const m = /"videoRenderer":\{"videoId":"([\w-]{11})"[\s\S]{0,4000}?"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/.exec(html);
+    if (!m) return { result: { error: "no YouTube video found for " + q } };
+    let title = m[2];
+    try { title = JSON.parse('"' + m[2] + '"'); } catch (e) {}
+    const url = "https://www.youtube.com/watch?v=" + m[1];
+    return { result: { queued: true, title, url },
+      cards: { title: "youtube · " + q, items: [{ title, url, label: "youtube.com" }] },
+      action: { type: "device", command: "open_url", args: { url } } };
   },
 
   async close_window() {

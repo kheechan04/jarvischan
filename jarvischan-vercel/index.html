@@ -1573,9 +1573,12 @@
   }
   if(timerX) timerX.addEventListener("click",()=>{ stopTimer(); log("timer cancelled"); });
 
-  // apply what the server's tools returned: result cards, timer, log line
+  // apply what the server's tools returned: result cards, timer, log line.
+  // Resolves to the local agent's results for any device actions, so the
+  // caller can check them before speaking.
   let loggedModel="";
   function handleTools(out){
+    const device=[];
     if(out.model && out.model!==loggedModel){ loggedModel=out.model;
       log('brain model <span class="ok">'+String(out.model).replace(/[<>&]/g,"")+"</span>"); }
     const groups=out.cards||[];
@@ -1585,17 +1588,29 @@
     }
     (out.actions||[]).forEach(a=>{
       if(a && a.type==="timer" && a.seconds>0) startTimer(a.seconds, a.label);
-      if(a && a.type==="device") runDeviceAction(a.command, a.args||{});
+      if(a && a.type==="device") device.push(runDeviceAction(a.command, a.args||{}));
     });
     if(out.tools && out.tools.length)
       log('tools → <span class="rt">'+out.tools.join(", ").replace(/[<>&]/g,"")+"</span>");
+    return Promise.all(device);
+  }
+
+  // What to say instead of the brain's reply when a device action failed.
+  // The reply was written before the action ran (the server only dispatches
+  // it), so it may well say "opened it" — speaking that over a failure is
+  // exactly the "said it opened, but didn't" bug.
+  function deviceFailLine(r){
+    const ko=lastLang==="ko", e=String(r.error||"");
+    if(r.code==="not_found") return ko ? "말씀하신 걸 찾지 못했어요. 이름을 다시 말해 주시겠어요?" : "I couldn't find that. Could you say the name again?";
+    if(r.code==="not_allowed") return ko ? "그 앱은 아직 제 실행 목록에 없어요." : "That app isn't on my list yet.";
+    if(/not connected/.test(e)) return ko ? "로컬 에이전트가 연결돼 있지 않아서 실행하지 못했어요." : "The local agent isn't connected, so I couldn't do that.";
+    if(/timed out/.test(e)) return ko ? "컴퓨터가 응답하지 않았어요." : "Your computer didn't respond.";
+    return ko ? "컴퓨터에서 실행하지 못했어요. 이유는 화면에 띄워 둘게요." : "That didn't work on your computer — the reason is on screen.";
   }
 
   // Relays a device action (open_app/open_url/open_path/find_files) to the
-  // local agent and shows what actually happened — the spoken reply was
-  // already generated before this runs (the server can't know the real
-  // outcome, only that it dispatched the request), so this is the only place
-  // that reports the true result back to the user.
+  // local agent and shows what actually happened. Returns the agent's result
+  // so handleInput can speak a failure instead of the brain's reply.
   async function runDeviceAction(command, args){
     log('device → <span class="rt">'+String(command).replace(/[<>&]/g,"")+"</span> "+
       JSON.stringify(args).replace(/[<>&]/g,"").slice(0,120));
@@ -1605,13 +1620,14 @@
       banner.textContent = lastLang==="ko"
         ? "로컬 에이전트 명령 실패: "+(r.error||"알 수 없는 오류")
         : "Local agent action failed: "+(r.error||"unknown error");
-      return;
+      return r;
     }
     log('device <span class="ok">'+trim(r.message||"done",80).replace(/[<>&]/g,"")+"</span>");
     if(command==="find_files" && Array.isArray(r.results)){
       showResults(lastLang==="ko"?"파일 검색 · "+args.query:"file search · "+args.query,
         r.results.map(p=>({title:p.split(/[\\\/]/).pop(), desc:p})));
     }
+    return r;
   }
 
   // spokenLang: what Whisper detected ("ko"/"en"), if the input came from voice
@@ -1632,10 +1648,17 @@
     try{
       const out=await askBrain(text);
       // a display glitch in cards/timer must not be reported as a brain failure
-      try{ handleTools(out); }catch(err){ log('cards <span style="color:var(--crit)">'+trim(err.message,40)+"</span>"); }
-      const {agent,body}=parseReply(out.text);
+      // Banner cleared first: a failing device action below writes its reason there.
       banner.textContent="";
-      sayAgent(agent, body||"Done.", jvBody); return;
+      let devResults=[];
+      try{ devResults=await handleTools(out); }catch(err){ log('cards <span style="color:var(--crit)">'+trim(err.message,40)+"</span>"); }
+      const failed=devResults.find(r=>r && !r.ok);
+      const {agent,body}=parseReply(out.text);
+      const reply=failed ? deviceFailLine(failed) : (body||"Done.");
+      // Keep the history truthful too, or the next turn builds on "I opened it".
+      const last=history[history.length-1];
+      if(failed && last && last.role==="assistant") last.content="ROUTE: "+(agent||"none")+"\n\n"+reply+" ("+trim(failed.error||"failed",120)+")";
+      sayAgent(agent, reply, jvBody); return;
     }catch(e){
       if(e.code===401){ banner.textContent="Session expired — enter the password again."; showGate(); }
       else if(e.code===429){ banner.textContent="Brain is busy (free-tier limit) — try again in a moment."; }

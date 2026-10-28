@@ -584,7 +584,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 | `schedule_shutdown` / `cancel_shutdown` | `shutdown /s /t` / `shutdown /a` | 1\~1440분. 이미 예약됐으면(종료 코드 1190) 실패로 알린다 |
 | `system_status` | 배터리·CPU·메모리·C 드라이브·가동 시간 | 도구가 아니다. 페이지가 매 대화 전에 1.5초 제한으로 불러서 `agentInfo.status`로 서버에 보내고, 서버가 지시문에 한 줄로 넣는다. 배터리는 WMI가 느려서 1분마다 갱신한 값을 쓴다 |
 | `open_url` | 기본 브라우저로 URL 열기 | `http(s)://`만 허용 |
-| `open_path` | 파일/폴더 열기 | `desktop`/`downloads`/`documents`/`pictures`/`바탕화면`/`다운로드`/`문서` 같은 별칭 지원, 전체 경로도 가능 |
+| `open_path` | 파일/폴더 열기 | `desktop`/`downloads`/`documents`/`pictures`/`videos`/`music`과 한국어 별칭, 전체 경로, 또는 이름만(바탕화면·문서·다운로드·사진·동영상·음악·OneDrive 깊이 4와 홈 바로 아래에서 찾는다. 정확히 같은 이름 > 앞부분 일치 > 포함, 폴더 > 파일, 얕은 쪽 우선). 폴더는 연 뒤 `Shell.Application`으로 그 창을 찾아 맨 앞으로 가져온다 |
+| `play_youtube`(서버 도구, 에이전트에는 `open_url`로 전달) | 유튜브 검색 첫 영상 재생 | 키 없이 공개 검색 페이지의 `videoRenderer`에서 첫 영상 ID를 뽑는다(광고는 다른 렌더러라 빠진다). 홈 피드는 개인화돼서 읽을 수 없다 |
 | `find_files` | 바탕화면·문서·다운로드에서 파일 이름 검색 | 읽기 전용, 최대 8개·깊이 5 |
 | `lock_screen` | 화면 잠금 | |
 | `take_screenshot`(에이전트 쪽 명령 이름은 `screenshot`) | 전체 화면을 캡처해 클립보드에만 복사(파일 저장 안 함) | DPI 처리로 고배율 디스플레이에서도 전체 캡처(§6 표). 클립보드 때문에 PowerShell을 `-Sta`로 띄운다 |
@@ -635,6 +636,16 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 - **떠 있는 아이콘**: 화면 구석에 항상 위로 뜨는 Jarvischan 아이콘을 누르면 어느 앱에서든 바로 듣기 시작한다(§9 편의 기능). 검증은 사용자가 수업 중이라 소리 없이 했다. 브라우저 대신 웹소켓 클라이언트가 페이지 행세를 하고, 실제 마우스 대신 아이콘 창에 `WM_LBUTTONDOWN/UP` 메시지를 보냈다. 연결 전 흐린 상태, `listening` 빨간 테두리, 클릭 → 페이지에 `activate` 도착, 에이전트 종료 → 아이콘 종료를 확인했다. 실제 페이지에서 아이콘으로 듣기가 시작되는지(특히 창이 최소화됐을 때)는 사용자가 확인해야 한다.
 - **검증**: 테스트 포트(18765)로 에이전트를 따로 띄워 웹소켓으로 `system_status`, `set_brightness`(현재 값 그대로), `close_window`(실제로 닫지 않는 `dry_run`), 24시간 뒤 종료 예약 → 중복 예약 거부 → 취소, 잘못된 분·없는 루틴 오류를 확인했다. 실제 앱을 여닫는 루틴과 화면 끄기는 브라우저에서 사용자가 확인해야 한다.
 
+### 업데이트 (2026-10-29) — "열었다고 해놓고 안 열림", 앱 안 조작
+
+사용자가 실제로 써 보고 두 가지를 알려줬다. 유튜브를 열고 첫 영상을 틀어달라고 하면 못 하고, 로컬 폴더를 열어달라고 하면 열었다고 말하고는 안 열린다.
+
+- **폴더가 안 열린 원인**: 이름만 받은 경로(`jarvischan`)를 `path.resolve()`로 풀어서 에이전트 자기 폴더(`local-agent\jarvischan`) 안에서 찾고 있었다. 당연히 없어서 실패했다. 이제 별칭도 전체 경로도 아니면 이름으로 검색한다(§9 표). 폴더를 열고 나면 그 창을 맨 앞으로 가져온다. 백그라운드 프로그램이 띄운 창은 브라우저 뒤에 깔리는 경우가 많아서, 열려도 안 열린 것처럼 보일 수 있기 때문이다. 사용자가 그때 어떤 이름을 말했는지는 로그가 없어 확인하지 못했다.
+- **"열었어요"라고 거짓말한 원인**: 음성 대답은 에이전트가 명령을 실행하기 *전에* 만들어진다(§9 구조 4번). 그래서 실패해도 LLM의 "열었어요"가 그대로 나갔다. 이제 페이지가 기기 명령 결과를 기다린 뒤에 말하고, 하나라도 실패하면 LLM 대답 대신 실패 문장(`deviceFailLine`, 에이전트가 주는 `code`: `not_found`/`not_allowed`)을 말한다. 대화 기록도 실패 내용으로 바꿔서 다음 턴에 "아까 열었으니"로 이어지지 않게 했다. 대신 명령을 실행하는 시간만큼 대답이 늦어진다(일반 종료는 1.5초).
+- **앱 안 조작은 일부러 안 넣었다**: 앱이나 웹 페이지 안의 버튼을 누르는 건 키보드·마우스 흉내나 UI 자동화가 필요한데, 처음부터 위험해서 뺀 기능이다(§9 보안). 대신 지시문에 "앱 안에서는 클릭·입력을 못 한다"를 적어서, 할 수 있는 척하지 않고 바로 못 한다고 말하게 했다. 유튜브만 `play_youtube`로 검색 첫 영상의 주소를 직접 연다. 홈 화면의 첫 영상은 로그인한 사람마다 달라서 서버에서 읽을 수 없으므로, 검색어가 없으면 무엇을 틀지 되묻는다.
+- **로그 파일**: 에이전트는 보통 최소화된 채 자동 시작돼서 콘솔을 볼 일이 없다. 이번처럼 원인을 거슬러 찾을 수 있도록, 콘솔 출력(받은 명령과 결과)을 `~/.jarvischan-agent/agent.log`에도 남긴다. 페어링 토큰이 든 줄은 빼고, 1MB를 넘으면 시작할 때 비운다. 매 대화마다 부르는 `system_status`는 적지 않는다.
+- **검증(소리 없이)**: 테스트 에이전트로 `jarvischan` → 바탕화면의 저장소 폴더가 열리고 맨 앞 창이 됨, `다운로드 폴더` → 다운로드, 없는 이름 → `not_found`를 확인하고 연 창은 닫았다. `play_youtube`는 서버 코드를 직접 불러 검색 결과 첫 영상 주소가 나오는 것과, 검색어가 없을 때 되묻는 오류를 확인했다. 실제로 영상을 여는 건 소리가 나서 하지 않았다.
+
 ---
 
 ## 부록 — 파일 원본
@@ -643,8 +654,8 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 | 파일 | 크기 | sha256 (앞 16자) |
 |---|---|---|
-| `index.html` | 114,913 bytes | `6b806be7b19e9094…` |
-| `api/chat.js` | 36,803 bytes | `1b33093812fd2033…` |
+| `index.html` | 116,644 bytes | `5a8f2ffeb5e66dc4…` |
+| `api/chat.js` | 39,276 bytes | `2f092ae49086617c…` |
 | `api/transcribe.js` | 5,170 bytes | `e035dfdf9da9a24b…` |
 | `package.json` | 170 bytes | `36031ccc383c75bf…` |
 | `README.md` | 5,823 bytes | `e40217c48616a95b…` |
@@ -653,7 +664,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `index.html`
 
-<!-- FILE: index.html sha256=6b806be7b19e90944630c5e5f6ac878388d519ee8f9922197c9f64da6ce494bd -->
+<!-- FILE: index.html sha256=5a8f2ffeb5e66dc4f5d0db7ac068d829c6e2a70e68f975887d0e34d33ab96727 -->
 ````html
 <!doctype html>
 <html lang="en">
@@ -2230,9 +2241,12 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
   }
   if(timerX) timerX.addEventListener("click",()=>{ stopTimer(); log("timer cancelled"); });
 
-  // apply what the server's tools returned: result cards, timer, log line
+  // apply what the server's tools returned: result cards, timer, log line.
+  // Resolves to the local agent's results for any device actions, so the
+  // caller can check them before speaking.
   let loggedModel="";
   function handleTools(out){
+    const device=[];
     if(out.model && out.model!==loggedModel){ loggedModel=out.model;
       log('brain model <span class="ok">'+String(out.model).replace(/[<>&]/g,"")+"</span>"); }
     const groups=out.cards||[];
@@ -2242,17 +2256,29 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     }
     (out.actions||[]).forEach(a=>{
       if(a && a.type==="timer" && a.seconds>0) startTimer(a.seconds, a.label);
-      if(a && a.type==="device") runDeviceAction(a.command, a.args||{});
+      if(a && a.type==="device") device.push(runDeviceAction(a.command, a.args||{}));
     });
     if(out.tools && out.tools.length)
       log('tools → <span class="rt">'+out.tools.join(", ").replace(/[<>&]/g,"")+"</span>");
+    return Promise.all(device);
+  }
+
+  // What to say instead of the brain's reply when a device action failed.
+  // The reply was written before the action ran (the server only dispatches
+  // it), so it may well say "opened it" — speaking that over a failure is
+  // exactly the "said it opened, but didn't" bug.
+  function deviceFailLine(r){
+    const ko=lastLang==="ko", e=String(r.error||"");
+    if(r.code==="not_found") return ko ? "말씀하신 걸 찾지 못했어요. 이름을 다시 말해 주시겠어요?" : "I couldn't find that. Could you say the name again?";
+    if(r.code==="not_allowed") return ko ? "그 앱은 아직 제 실행 목록에 없어요." : "That app isn't on my list yet.";
+    if(/not connected/.test(e)) return ko ? "로컬 에이전트가 연결돼 있지 않아서 실행하지 못했어요." : "The local agent isn't connected, so I couldn't do that.";
+    if(/timed out/.test(e)) return ko ? "컴퓨터가 응답하지 않았어요." : "Your computer didn't respond.";
+    return ko ? "컴퓨터에서 실행하지 못했어요. 이유는 화면에 띄워 둘게요." : "That didn't work on your computer — the reason is on screen.";
   }
 
   // Relays a device action (open_app/open_url/open_path/find_files) to the
-  // local agent and shows what actually happened — the spoken reply was
-  // already generated before this runs (the server can't know the real
-  // outcome, only that it dispatched the request), so this is the only place
-  // that reports the true result back to the user.
+  // local agent and shows what actually happened. Returns the agent's result
+  // so handleInput can speak a failure instead of the brain's reply.
   async function runDeviceAction(command, args){
     log('device → <span class="rt">'+String(command).replace(/[<>&]/g,"")+"</span> "+
       JSON.stringify(args).replace(/[<>&]/g,"").slice(0,120));
@@ -2262,13 +2288,14 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
       banner.textContent = lastLang==="ko"
         ? "로컬 에이전트 명령 실패: "+(r.error||"알 수 없는 오류")
         : "Local agent action failed: "+(r.error||"unknown error");
-      return;
+      return r;
     }
     log('device <span class="ok">'+trim(r.message||"done",80).replace(/[<>&]/g,"")+"</span>");
     if(command==="find_files" && Array.isArray(r.results)){
       showResults(lastLang==="ko"?"파일 검색 · "+args.query:"file search · "+args.query,
         r.results.map(p=>({title:p.split(/[\\\/]/).pop(), desc:p})));
     }
+    return r;
   }
 
   // spokenLang: what Whisper detected ("ko"/"en"), if the input came from voice
@@ -2289,10 +2316,17 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
     try{
       const out=await askBrain(text);
       // a display glitch in cards/timer must not be reported as a brain failure
-      try{ handleTools(out); }catch(err){ log('cards <span style="color:var(--crit)">'+trim(err.message,40)+"</span>"); }
-      const {agent,body}=parseReply(out.text);
+      // Banner cleared first: a failing device action below writes its reason there.
       banner.textContent="";
-      sayAgent(agent, body||"Done.", jvBody); return;
+      let devResults=[];
+      try{ devResults=await handleTools(out); }catch(err){ log('cards <span style="color:var(--crit)">'+trim(err.message,40)+"</span>"); }
+      const failed=devResults.find(r=>r && !r.ok);
+      const {agent,body}=parseReply(out.text);
+      const reply=failed ? deviceFailLine(failed) : (body||"Done.");
+      // Keep the history truthful too, or the next turn builds on "I opened it".
+      const last=history[history.length-1];
+      if(failed && last && last.role==="assistant") last.content="ROUTE: "+(agent||"none")+"\n\n"+reply+" ("+trim(failed.error||"failed",120)+")";
+      sayAgent(agent, reply, jvBody); return;
     }catch(e){
       if(e.code===401){ banner.textContent="Session expired — enter the password again."; showGate(); }
       else if(e.code===429){ banner.textContent="Brain is busy (free-tier limit) — try again in a moment."; }
@@ -2953,7 +2987,7 @@ Chrome에서 사이트를 열고 비밀번호를 넣은 뒤 한국어나 영어�
 
 ### `api/chat.js`
 
-<!-- FILE: api/chat.js sha256=1b33093812fd203336bcb813350ae45adddf06c46da6f4cd3e1060cb92bb10f1 -->
+<!-- FILE: api/chat.js sha256=2f092ae49086617cece728ffd2ae814010f01fa3350ad982a7ba060ad2a7e2fe -->
 ````js
 // Vercel serverless function — Jarvischan brain proxy.
 // Keeps the free Groq API key server-side (never sent to the browser),
@@ -2987,7 +3021,7 @@ const SYSTEM = [
   "- general conversation, brainstorming and answering from your own knowledge",
   "- understanding and answering in Korean or English, by voice or text",
   "",
-  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown, battery/CPU status) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first.",
+  "WHAT YOU CANNOT DO YET: web search, reading or sending email, calendars, Notion, social media, long-term memory (you forget everything when the page reloads). Acting on the user's own computer (apps, URLs, files, windows, routines, volume, brightness, screen, shutdown, battery/CPU status) only works when a local agent line below says it is connected right now — otherwise say it needs that connected first. Even then you can't click, type or press anything inside an app or web page (pick a video on YouTube's home screen, send a KakaoTalk message, press play in Spotify): you can only open/close apps and windows, open URLs, files and folders, and use the device tools. To play something on YouTube, use play_youtube with a search term.",
   "Never claim you did, queued, drafted, scheduled or saved something unless a tool result confirms it. If asked for something you cannot do, say so plainly in one sentence and offer the closest thing you can do.",
   "When asked what you can do, name three or four of the real abilities above in one or two sentences — never invent others.",
   "Use tool results as the only source for live facts. If a tool returns an error, say what failed in plain words.",
@@ -3043,9 +3077,12 @@ const DEVICE_TOOLS = [
   fn("open_url", "Open a URL in the default browser on the user's computer.", {
     url: { type: "string", description: "Full URL starting with http:// or https://" }
   }, ["url"]),
-  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer). Accepts a friendly folder name (desktop, downloads, documents, pictures) or an absolute path.", {
-    path: { type: "string", description: "e.g. downloads, desktop, or an absolute path like C:\\Users\\me\\Documents\\report.docx" }
+  fn("open_path", "Open a file or folder on the user's computer with its default app (a folder opens in File Explorer). Accepts a standard folder (desktop, downloads, documents, pictures, videos, music), an absolute path, or just a folder/file name — the agent then searches Desktop, Documents, Downloads and the home folder for it.", {
+    path: { type: "string", description: "e.g. downloads, or the name the user said like jarvischan or 과제, or an absolute path like C:\\Users\\me\\Documents\\report.docx. Never invent a full path you don't know — pass the bare name instead." }
   }, ["path"]),
+  fn("play_youtube", "Search YouTube and open the top video, playing, in the user's browser. Use for requests like '유튜브에서 X 틀어줘' / 'play X on YouTube'. The YouTube home feed is personal and can't be read, so 'play the first video' needs a search term — if none was given, ask what to play.", {
+    query: { type: "string", description: "What to search for, in the user's own language" }
+  }, ["query"]),
   fn("find_files", "Search the user's Desktop, Documents and Downloads folders for files whose name contains a query.", {
     query: { type: "string", description: "Filename substring to search for" }
   }, ["query"]),
@@ -3312,6 +3349,29 @@ const IMPL = {
     const n = Math.max(1, Math.min(20, parseInt(steps, 10) || 5));
     return { result: { queued: true, direction: d, steps: n },
       action: { type: "device", command: "adjust_volume", args: { direction: d, steps: n } } };
+  },
+
+  // Runs here (no API key: it reads the public search page), then hands the
+  // watch URL to the local agent to open — the video plays on the user's PC.
+  async play_youtube({ query }) {
+    const q = String(query || "").trim().slice(0, 100);
+    if (!q) return { result: { error: "no search term given — ask the user what to play" } };
+    const r = await fetch("https://www.youtube.com/results?search_query=" + encodeURIComponent(q) + "&hl=ko&gl=KR", {
+      headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+        "accept-language": "ko-KR,ko;q=0.9,en;q=0.8" },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) return { result: { error: "YouTube search failed (" + r.status + ")" } };
+    const html = await r.text();
+    // "videoRenderer" entries are the organic results; ads use other renderers.
+    const m = /"videoRenderer":\{"videoId":"([\w-]{11})"[\s\S]{0,4000}?"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/.exec(html);
+    if (!m) return { result: { error: "no YouTube video found for " + q } };
+    let title = m[2];
+    try { title = JSON.parse('"' + m[2] + '"'); } catch (e) {}
+    const url = "https://www.youtube.com/watch?v=" + m[1];
+    return { result: { queued: true, title, url },
+      cards: { title: "youtube · " + q, items: [{ title, url, label: "youtube.com" }] },
+      action: { type: "device", command: "open_url", args: { url } } };
   },
 
   async close_window() {

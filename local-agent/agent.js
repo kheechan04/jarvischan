@@ -47,6 +47,21 @@ function ensureToken() {
 }
 const TOKEN = ensureToken();
 
+// The agent usually runs minimized from autostart, so its console output is
+// out of sight when something goes wrong. Mirror it to a file (minus the
+// pairing token) so "it said it opened it but didn't" can be traced later.
+const LOG_FILE = path.join(CONFIG_DIR, "agent.log");
+try { if (fs.statSync(LOG_FILE).size > 1000000) fs.writeFileSync(LOG_FILE, ""); } catch (e) {}
+for (const level of ["log", "error"]) {
+  const orig = console[level].bind(console);
+  console[level] = (...args) => {
+    orig(...args);
+    const line = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+    if (line.includes(TOKEN)) return;
+    try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + " " + line.slice(0, 500) + "\n"); } catch (e) {}
+  };
+}
+
 function loadApps() {
   try { return JSON.parse(fs.readFileSync(APPS_FILE, "utf8")); }
   catch (e) { console.error("apps.json unreadable:", e.message); return {}; }
@@ -76,7 +91,7 @@ async function openApp(name) {
   const key = String(name || "").toLowerCase().trim();
   const entry = apps[key];
   const cmd = entry && entry.open;
-  if (!cmd) return { ok: false, error: "app not in allow-list: " + name + " (edit apps.json to add it)" };
+  if (!cmd) return { ok: false, code: "not_allowed", error: "app not in allow-list: " + name + " (edit apps.json to add it)" };
   return new Promise((resolve) => {
     exec(cmd, (err) => {
       resolve(err ? { ok: false, error: "failed to launch " + name } : { ok: true, message: "opened " + name });
@@ -109,7 +124,7 @@ async function closeApp(name, force) {
   if (CLOSE_BLOCKLIST.has(key)) return { ok: false, error: "won't close " + name + " — that's the Windows desktop shell" };
   const entry = apps[key];
   const proc = entry && entry.process;
-  if (!proc) return { ok: false, error: "no process name configured for " + name + " (edit apps.json to add one)" };
+  if (!proc) return { ok: false, code: "not_allowed", error: "no process name configured for " + name + " (edit apps.json to add one)" };
   if (!(await isProcessRunning(proc))) return { ok: true, message: name + " wasn't running" };
 
   // Tray apps (KakaoTalk, Discord) treat a normal close as "hide to the
@@ -148,18 +163,93 @@ const FOLDER_ALIASES = {
   "downloads": "Downloads", "download": "Downloads", "다운로드": "Downloads",
   "documents": "Documents", "문서": "Documents",
   "pictures": "Pictures", "사진": "Pictures",
+  "videos": "Videos", "동영상": "Videos", "비디오": "Videos",
+  "music": "Music", "음악": "Music",
   "home": "", "홈": ""
 };
+
+// "jarvischan 폴더 열어줘" arrives as just a name. Before this, a bare name
+// went through path.resolve() and so was looked up inside the agent's own
+// folder — never found. Now search the usual places for a folder (then a
+// file) with that name: exact name beats prefix beats substring, and a
+// shallower hit beats a deeper one.
+const SEARCH_SKIP = new Set(["node_modules", "appdata", "$recycle.bin", "__pycache__", "venv", ".venv"]);
+function findByName(name) {
+  const want = name.toLowerCase();
+  const home = os.homedir();
+  const roots = ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music", "OneDrive"]
+    .map((d) => path.join(home, d)).filter((p) => fs.existsSync(p));
+  let best = null, scanned = 0;
+  const consider = (full, isDir, depth) => {
+    const n = path.basename(full).toLowerCase();
+    const rank = n === want ? 0 : n.startsWith(want) ? 1 : n.includes(want) ? 2 : -1;
+    if (rank < 0) return;
+    const score = (isDir ? 0 : 100) + rank * 10 + depth;
+    if (!best || score < best.score) best = { full, score };
+  };
+  function walk(dir, depth) {
+    if (depth > 4 || scanned > 30000) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const ent of entries) {
+      if (++scanned > 30000) return;
+      if (ent.name.startsWith(".") || SEARCH_SKIP.has(ent.name.toLowerCase())) continue;
+      const full = path.join(dir, ent.name);
+      consider(full, ent.isDirectory(), depth);
+      if (ent.isDirectory()) walk(full, depth + 1);
+    }
+  }
+  // Top-level folders in the home directory itself (e.g. a project folder
+  // kept at C:\Users\me\project), without descending into all of it.
+  try {
+    for (const ent of fs.readdirSync(home, { withFileTypes: true }))
+      if (ent.isDirectory() && !ent.name.startsWith(".")) consider(path.join(home, ent.name), true, 1);
+  } catch (e) {}
+  roots.forEach((r) => walk(r, 0));
+  return best && best.full;
+}
+
+// A window opened by a background program (this agent) often appears behind
+// the browser instead of in front — so a folder could open and still look
+// like nothing happened. Find the Explorer window showing that folder and
+// bring it forward. The lone Alt press is the standard way to let a
+// non-foreground process hand focus to a window; it types nothing.
+async function focusExplorerWindow(folder) {
+  const script = [
+    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class JarvischanFocus { [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int c); [DllImport(\"user32.dll\")] public static extern bool IsIconic(IntPtr h); [DllImport(\"user32.dll\")] public static extern void keybd_event(byte vk, byte sc, uint f, UIntPtr x); }'",
+    "$want = '" + folder.replace(/'/g, "''") + "'",
+    "for ($i = 0; $i -lt 20; $i++) {",
+    "  foreach ($w in (New-Object -ComObject Shell.Application).Windows()) {",
+    "    try { $p = $w.Document.Folder.Self.Path } catch { continue }",
+    "    if ($p -and $p.TrimEnd('\\') -ieq $want.TrimEnd('\\')) {",
+    "      $h = [IntPtr]$w.HWND",
+    "      if ([JarvischanFocus]::IsIconic($h)) { [JarvischanFocus]::ShowWindow($h, 9) | Out-Null }",
+    "      [JarvischanFocus]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [JarvischanFocus]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)",
+    "      [JarvischanFocus]::SetForegroundWindow($h) | Out-Null",
+    "      'focused'; exit",
+    "    }",
+    "  }",
+    "  Start-Sleep -Milliseconds 150",
+    "}"
+  ].join("\n");
+  const r = await runPowerShell(script);
+  return r.ok && r.stdout === "focused";
+}
+
 async function openPath(p) {
-  const raw = String(p || "").trim();
+  let raw = String(p || "").trim().replace(/^["']|["']$/g, "");
   if (!raw) return { ok: false, error: "missing path" };
-  const aliasKey = raw.toLowerCase();
-  const resolved = (aliasKey in FOLDER_ALIASES)
-    ? path.join(os.homedir(), FOLDER_ALIASES[aliasKey])
-    : path.resolve(raw);
-  if (!fs.existsSync(resolved)) return { ok: false, error: "path not found: " + raw };
+  const aliasKey = raw.toLowerCase().replace(/\s*(폴더|folder|디렉터리|디렉토리)$/, "").trim();
+  let resolved;
+  if (aliasKey in FOLDER_ALIASES) resolved = path.join(os.homedir(), FOLDER_ALIASES[aliasKey]);
+  else if (path.isAbsolute(raw) && fs.existsSync(raw)) resolved = raw;
+  else resolved = findByName(path.basename(aliasKey));
+  if (!resolved || !fs.existsSync(resolved)) return { ok: false, code: "not_found", error: "path not found: " + raw };
+  const isDir = fs.statSync(resolved).isDirectory();
   const r = await shellOpen(resolved);
-  return r.ok ? { ok: true, message: "opened " + resolved } : { ok: false, error: r.error || "failed to open path" };
+  if (!r.ok) return { ok: false, error: r.error || "failed to open path" };
+  const focused = isDir ? await focusExplorerWindow(resolved) : false;
+  return { ok: true, message: "opened " + resolved + (isDir && !focused ? " (window may be behind)" : ""), path: resolved };
 }
 
 async function findFiles(query) {
@@ -450,7 +540,7 @@ function findRoutine(name) {
 }
 async function runRoutine(name) {
   const found = findRoutine(name);
-  if (!found) return { ok: false, error: "no routine called " + name + " (edit routines.json to add it)" };
+  if (!found) return { ok: false, code: "not_found", error: "no routine called " + name + " (edit routines.json to add it)" };
   const steps = Array.isArray(found.routine.steps) ? found.routine.steps : [];
   const done = [], failed = [];
   for (const s of steps) {
@@ -594,8 +684,11 @@ wss.on("connection", (ws, req) => {
     }
 
     if (msg.type === "cmd") {
-      console.log("cmd:", msg.command, JSON.stringify(msg.args || {}));
+      // system_status runs before every chat turn — keep it out of the log.
+      const quiet = msg.command === "system_status";
+      if (!quiet) console.log("cmd:", msg.command, JSON.stringify(msg.args || {}).slice(0, 200));
       const result = await runCommand(msg.command, msg.args);
+      if (!quiet) console.log("  ->", result.ok ? "ok: " + (result.message || "") : "FAILED: " + result.error);
       ws.send(JSON.stringify(Object.assign({ type: "result", id: msg.id }, result)));
     }
   });
